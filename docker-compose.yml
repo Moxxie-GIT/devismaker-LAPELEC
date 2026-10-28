@@ -1,0 +1,17 @@
+# LAPELEC Devis sur TrueNAS SCALE : Apps > Discover Apps > ⋮ > Install via YAML.
+# Remplacer POOL par le nom du pool. Les données (devis, comptes, prix) restent dans le dossier data.
+# Mise à jour : redémarrer l'application, la dernière image est téléchargée (pull_policy: always).
+services:
+  devismaker:
+    image: ghcr.io/moxxie-git/devismaker-lapelec:latest
+    pull_policy: always
+    restart: unless-stopped
+    user: "568:568"
+    environment:
+      PORT: "8090"
+      DATA_DIR: /data
+      TZ: America/St_Barthelemy
+    ports:
+      - "8090:8090"
+    volumes:
+      - /mnt/POOL/lapelec-devis/data:/data

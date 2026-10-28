@@ -1,0 +1,6 @@
+node_modules
+dist/
+data/
+*.log
+# fichiers de prix de l'entreprise : jamais dans le dépôt
+prix-*.json
