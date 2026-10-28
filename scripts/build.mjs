@@ -43,7 +43,8 @@ await esbuild.build({
 const h = (f) => createHash('sha1').update(readFileSync(join(dist, 'public', f))).digest('hex').slice(0, 10);
 const html = readFileSync(join(racine, 'client/index.html'), 'utf8')
   .replace('%APP_JS%', `/app.js?v=${h('app.js')}`)
-  .replace('%APP_CSS%', `/app.css?v=${h('app.css')}`);
+  .replace('%APP_CSS%', `/app.css?v=${h('app.css')}`)
+  .replace('%FAVICON%', `/favicon.svg?v=${createHash('sha1').update(readFileSync(join(racine, 'client/favicon.svg'))).digest('hex').slice(0, 10)}`);
 writeFileSync(join(dist, 'public/index.html'), html);
 for (const f of ['favicon.svg', 'logo.svg']) if (existsSync(join(racine, 'client', f))) copyFileSync(join(racine, 'client', f), join(dist, 'public', f));
 console.log(`dist/ construit (version ${version})`);

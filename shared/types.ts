@@ -32,6 +32,7 @@ export interface Tableau {
   section: 6 | 10;                 // section de l'alimentation du TD
   modele: 'standard' | 'plomberie';
   alimentePar: string;             // 'TGBT' ou id de la pièce qui porte le TD
+  alimTgbt: 'edf' | 'onduleur' | 'aucune'; // alimentation du TGBT (si la pièce le porte)
 }
 
 export interface Piece {

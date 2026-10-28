@@ -151,6 +151,16 @@ function QuestionTableau({ piece, pieces, maj, conseil }: {
             <Segments<'mono' | 'tetra'> label="Phase du TGBT" valeur={t.phase} options={[['mono', 'Monophasé'], ['tetra', 'Tétra']]} onChange={(v) => maj((p) => { p.tableau.phase = v; })} />
           </div>
         )}
+        {t.choix === 'TGBT' && (
+          <div className="champ">
+            <label htmlFor={`alimtgbt-${piece.id}`}>Alimentation du TGBT</label>
+            <select id={`alimtgbt-${piece.id}`} value={t.alimTgbt} onChange={(e) => maj((p) => { p.tableau.alimTgbt = e.target.value as 'edf' | 'onduleur' | 'aucune'; })}>
+              <option value="edf">EDF vers TGBT ({t.phase === 'tetra' ? '4' : '2'}×16 mm²)</option>
+              <option value="onduleur">EDF vers onduleur, puis onduleur vers TGBT</option>
+              <option value="aucune">Aucune (saisie à part)</option>
+            </select>
+          </div>
+        )}
       </div>
       <p className="conseil">
         {!t.choix && <>À renseigner. Pour ce type de pièce, c’est souvent {conseilTexte}. </>}

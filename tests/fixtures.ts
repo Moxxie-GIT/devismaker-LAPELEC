@@ -8,7 +8,7 @@ const C = (nom: string, nb: number, opts: Partial<Circuit> = {}): Circuit =>
 const E = (cle: string, quantite: number, designation: string): Element => ({ id: id(), cle, designation, quantite });
 const P = (nom: string, type: string, tableau: Partial<Piece['tableau']>, rest: Partial<Piece>): Piece => ({
   id: nom, nom, type,
-  tableau: { choix: 'AUCUN', phase: 'mono', section: 6, modele: 'standard', alimentePar: 'TGBT', ...tableau },
+  tableau: { choix: 'AUCUN', phase: 'mono', section: 6, modele: 'standard', alimentePar: 'TGBT', alimTgbt: 'edf', ...tableau },
   circuits: [], inters: [], detecteurs: 0, classique: { sa: 0, vv: 0, bps: 0 }, elements: [], ...rest,
 });
 
@@ -59,8 +59,7 @@ export function villaDemo(): DevisData {
       P('Local technique', 'local_tech', { choix: 'TGBT' }, {
         circuits: [C('néon', 1)], inters: [1],
         elements: [E('PCS_SERVICE', 1, 'Prise simple 2P+T 220V (service)'), E('BAIE', 1, 'Alimentation baie informatique'),
-          E('ASSAIN', 1, 'Alimentation assainissement 3g6mm² 220V'),
-          E('ALIMEDF', 1, 'Alimentation EDF vers TGBT 2X16mm² SOUS TPC 63mm² noir. Veuillez noter que le prix est susceptible de varier en fonction du nombre de mètres linéaire réellement réalisé dans le cadre des travaux.')],
+          E('ASSAIN', 1, 'Alimentation assainissement 3g6mm² 220V')],
       }),
       P('Local plomberie', 'plomberie', {}, {
         circuits: [C('néon', 1), C('transformateur spot piscine', 1, { lieu: 'ext', pose: 'aucune' })], inters: [1],

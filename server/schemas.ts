@@ -18,6 +18,7 @@ export const SchemaDevisData = z.object({
       section: z.union([z.literal(6), z.literal(10)]),
       modele: z.enum(['standard', 'plomberie']),
       alimentePar: texte(40),
+      alimTgbt: z.enum(['edf', 'onduleur', 'aucune']),
     }),
     circuits: z.array(z.object({
       id: texte(40), type: texte(40), nom: texte(200), lieu: z.enum(['int', 'ext']), nb: qte,

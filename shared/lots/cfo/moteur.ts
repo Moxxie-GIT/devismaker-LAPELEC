@@ -3,7 +3,7 @@ import type {
   Alerte, DevisData, LigneImport, Parametres, Piece, Protection, Resultat, TableauCalcule,
 } from '../../types';
 import {
-  ALIM_TD, CATALOGUE, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX, type ModeleTableau,
+  ALIM_TD, CATALOGUE, NOTE_ML, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX, type ModeleTableau,
 } from './catalogue';
 import { TYPES_PIECES } from './pieces';
 
@@ -168,7 +168,15 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       if (knx) L('ENSELB', 'Liaison bus TD vers TGBT', 1);
     } else if (p.tableau.choix === 'TGBT') {
       const tab = tableaux.get('TGBT');
-      if (tab && tab.pieceId === p.id) L(tab.modele.code, tab.modele.designation, 1);
+      if (tab && tab.pieceId === p.id) {
+        const sec = p.tableau.phase === 'tetra' ? '4X16' : '2X16';
+        if (p.tableau.alimTgbt === 'edf') L('ENSEALIMEDF', `Alimentation EDF vers TGBT ${sec}mm² SOUS TPC 63mm² noir.` + NOTE_ML, 1);
+        if (p.tableau.alimTgbt === 'onduleur') {
+          L('ENSEALIMEDF', `Alimentation EDF vers onduleur ${sec}mm² SOUS TPC 63mm² noir.` + NOTE_ML, 1);
+          L('ENSEEDFONDU', `Alimentation onduleur vers TGBT ${sec}mm² sous tpc de 63mm² noir.` + NOTE_ML, 1);
+        }
+        L(tab.modele.code, tab.modele.designation, 1);
+      }
     }
   }
 

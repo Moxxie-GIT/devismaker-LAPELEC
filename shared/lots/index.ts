@@ -53,6 +53,9 @@ export function normaliserDevisData(brut: any): DevisData {
       section: p?.tableau?.section === 10 ? 10 : 6,
       modele: p?.tableau?.modele === 'plomberie' ? 'plomberie' : 'standard',
       alimentePar: texte(p?.tableau?.alimentePar, 'TGBT'),
+      // anciens devis : l'alimentation EDF était saisie comme équipement, on ne la double pas
+      alimTgbt: ['edf', 'onduleur', 'aucune'].includes(p?.tableau?.alimTgbt) ? p.tableau.alimTgbt
+        : (p?.elements ?? []).some((e: any) => ['ALIMEDF', 'ALIMEDF4', 'ONDULEUR'].includes(e?.cle) && e?.quantite > 0) ? 'aucune' : 'edf',
     },
     circuits: Array.isArray(p?.circuits) ? p.circuits.map((c: any) => ({
       id: texte(c?.id, uid()), type: texte(c?.type, 'autre'), nom: texte(c?.nom), lieu: c?.lieu === 'ext' ? 'ext' : 'int',

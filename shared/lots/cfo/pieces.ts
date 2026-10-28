@@ -83,7 +83,7 @@ export const TYPES_PIECES: Record<string, TypePiece> = {
     label: 'Local technique électrique', suffixe: 'local technique', conseilTableau: 'TGBT',
     aide: 'Le TGBT est en général dans le local technique.',
     circuits: [['neon', 1, { nom: 'Néon' }]],
-    elements: [['PCS_SERVICE', 1], ['ALIMEDF', 1], ['ONDULEUR', 0], ['ENRMONO', 0], ['BAIE', 1], ['ASSAIN', 0], ['DRV220', 0],
+    elements: [['PCS_SERVICE', 1], ['ENRMONO', 0], ['BAIE', 1], ['ASSAIN', 0], ['DRV220', 0],
       ['MONTECHARGE', 0], ['CLIM', 0]],
   },
   plomberie: {
@@ -123,7 +123,7 @@ export function nouvelElement(cle: string, quantite = 1): Element {
 
 export function tableauParDefaut(type: string): Tableau {
   const t = TYPES_PIECES[type];
-  return { choix: null, phase: 'mono', section: t?.section ?? 6, modele: t?.modele ?? 'standard', alimentePar: 'TGBT' };
+  return { choix: null, phase: 'mono', section: t?.section ?? 6, modele: t?.modele ?? 'standard', alimentePar: 'TGBT', alimTgbt: 'edf' };
 }
 
 export function nouvellePiece(type: string, nom: string): Piece {
