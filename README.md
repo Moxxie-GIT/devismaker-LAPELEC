@@ -9,9 +9,7 @@ On décrit la villa pièce par pièce (éclairage, inters, prises, équipements,
 - Calcul en direct : disjoncteurs des TD et du TGBT (dessinés sur un rail), modules KNX (TA2/TA4, RM, SM4, DM4T, DM4 DALI, JM4T).
 - Export `.xlsx` : feuille **IMPORT** à importer, plus **TABLEAUX À MODIFIER** et **DÉTAIL CALCUL** pour le contrôle.
 
-> Les prix, coefficients et taux de main d’œuvre de l’entreprise ne sont **pas** dans ce dépôt. Ils sont saisis par un administrateur dans l’outil (*Utilisateurs et prix*) ou importés depuis un fichier, et restent dans la base du serveur.
-
-## Installation sur TrueNAS SCALE
+## Installation sur TrueNAS
 
 L’image est construite automatiquement à chaque modification de `main` et publiée sur `ghcr.io/moxxie-git/devismaker-lapelec`.
 
@@ -22,6 +20,9 @@ L’image est construite automatiquement à chaque modification de `main` et pub
 2. Apps > Discover Apps > ⋮ > **Install via YAML**, nom `lapelec-devis`, coller [`docker-compose.yml`](docker-compose.yml) en remplaçant `POOL`.
 3. Ouvrir `http://IP-DU-NAS:8090` et créer le compte administrateur (la première personne qui ouvre la page le crée).
 4. *Utilisateurs et prix* > *Prix et coefficients* > **Importer un fichier de prix**, puis **Enregistrer les prix**.
+
+> Comme vous pouvez le voir, cette méthode de création de compte admin n'est pas compatible avec un déploiement sur internet !
+> Veuillez donc éviter de déployer cet outil sur un serveur accessible publiquement !!!! 
 
 ### Mettre à jour
 
@@ -69,13 +70,11 @@ client/                 interface React
 tests/                  tests du moteur (valeurs fictives) et parcours navigateur
 ```
 
-### Règles principales (lot CFO)
+### Mais pourquoi ?
 
-- Une pièce = un bloc Esabora ; le nom de la pièce est répété dans la colonne N° sur chaque ligne du bloc.
-- Point lumineux : `ENSEPTI` (intérieur) ou `ENSEPTE` (extérieur) + pose `MO LUM` (1 h, bandeau LED difficile 2 h).
-- KNX : une ligne « Bouton poussoir knx » par pièce (nombre d’inters). TA : 1-2 boutons → TA2, 3-4 → TA4, 5-6 → TA4 + TA2, 7-8 → 2 TA4.
-- Modules de sortie dans le tableau qui alimente les circuits : on/off → RM4 / RM8 / RM16, 1-10 V → SM4, 230 V → DM4T, DALI → DM4 DALI, rideaux / stores / volets → JM4T.
-- Tableaux : l’ensemble minimum est toujours facturé ; l’outil donne les quantités à monter dans l’ensemble après l’import (C10 : 8 points max ; prises C20, 12 socles max ; dédiées C20 ; clim C16 ; VMC C10 ; plaque C32 ; 8 circuits max par ID, type A pour plaque et lave-linge ; départs TGBT C32 300 mA en 6 mm², C40 en 10 mm²). Les tableaux tétra ne sont pas calculés.
+Concrètement, cet outil ne vous servira probablement jamais, et c'est donc pour cette raison que je n'accepterais pas de pull request.
+Si vous voulez un outil similaire pour vous ou votre entreprise, contactez moi (contact@moxxie.fr).
+Pour nous à LAPELEC en revanche, cet outil nous est utile pour faciliter la tache de créer un devis sur Esabora, car c'est un peu chiant de toujours se souvenir de toute les normes et règles de création d'un chantier CFO.
 
 ### Ajouter un lot (CFA, ENR…)
 
