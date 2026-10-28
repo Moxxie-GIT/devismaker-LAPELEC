@@ -45,5 +45,5 @@ const html = readFileSync(join(racine, 'client/index.html'), 'utf8')
   .replace('%APP_JS%', `/app.js?v=${h('app.js')}`)
   .replace('%APP_CSS%', `/app.css?v=${h('app.css')}`);
 writeFileSync(join(dist, 'public/index.html'), html);
-if (existsSync(join(racine, 'client/favicon.svg'))) copyFileSync(join(racine, 'client/favicon.svg'), join(dist, 'public/favicon.svg'));
+for (const f of ['favicon.svg', 'logo.svg']) if (existsSync(join(racine, 'client', f))) copyFileSync(join(racine, 'client', f), join(dist, 'public', f));
 console.log(`dist/ construit (version ${version})`);

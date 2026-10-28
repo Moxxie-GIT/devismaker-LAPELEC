@@ -46,7 +46,7 @@ export function Lien({ vers, children, className }: { vers: string; children: Re
 
 export function Marque({ lot = true }: { lot?: boolean }) {
   return (
-    <span className="marque"><span className="terre" aria-hidden="true" />LAPELEC Devis{lot && <span className="lot">CFO</span>}</span>
+    <span className="marque"><img className="logo" src="/logo.svg" alt="" />LAPELEC Devis{lot && <span className="lot">CFO</span>}</span>
   );
 }
 
@@ -62,7 +62,7 @@ export function Barre({ children }: { children?: ReactNode }) {
   }, [ouvert]);
   return (
     <header className="barre">
-      <Lien vers="/" className="marque"><span className="terre" aria-hidden="true" />LAPELEC Devis<span className="lot">CFO</span></Lien>
+      <Lien vers="/" className="marque"><img className="logo" src="/logo.svg" alt="" />LAPELEC Devis<span className="lot">CFO</span></Lien>
       {children}
       <span className="espace" />
       <div className="menu-util">
