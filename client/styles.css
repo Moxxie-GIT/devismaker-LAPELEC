@@ -439,7 +439,12 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
   display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 3px 0;
   box-shadow: 0 1px 1px rgba(24, 34, 42, 0.08);
 }
-.module.x2 { grid-column: span 2; }
+.coffret.serre .rangee { gap: 1px; padding: 0 1px; }
+.coffret.serre .module .rep { font-size: 7px; }
+.module.repartiteur { background: #e3e6e5; }
+.module.bornier { background: repeating-linear-gradient(90deg, #8c9397 0 5px, #7c8387 5px 6px); }
+.module.bornier .rep { color: #fff; }
+.module.transfo .rep, .module.repartiteur .rep { margin-top: 8px; }
 .module .rep { font-family: var(--din); font-size: 9px; line-height: 1; color: var(--encre); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
 .module.x2 .rep { writing-mode: horizontal-tb; transform: none; font-size: 8px; line-height: 1.1; text-align: center; white-space: pre-line; overflow: hidden; }
 .module .manette { width: 50%; max-width: 8px; height: 14px; background: var(--encre); border-radius: 1px; }
@@ -462,6 +467,19 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .jauge > div { height: 100%; background: linear-gradient(90deg, #3a9b58, var(--terre-v)); border-radius: 3px; transition: width 300ms ease; }
 .jauge.haut > div { background: var(--terre-j); }
 
+/* répartition sur les phases (tableaux tétra) : brun, noir, gris */
+.phases { margin-top: 18px; }
+.phases h3 { margin-bottom: 8px; }
+.phase { display: grid; grid-template-columns: 26px 1fr 64px; gap: 8px; align-items: center; font-size: var(--t-12); margin-bottom: 5px; }
+.nom-phase { font: 600 var(--t-11)/1.6 var(--din); text-align: center; border-radius: 4px; color: #fff; }
+.nom-phase.L1, .barre-phase .L1 { background: #8a5a3c; }
+.nom-phase.L2, .barre-phase .L2 { background: #2a3035; }
+.nom-phase.L3, .barre-phase .L3 { background: #8f979b; }
+.barre-phase { height: 8px; background: #e1e6e4; border-radius: 4px; overflow: hidden; }
+.barre-phase > div { height: 100%; border-radius: 4px; transition: width 300ms ease; }
+.phase b { text-align: right; font-family: var(--din); }
+.phases > p { margin-top: 4px; }
+
 /* étiquettes du tableau (liste lisible des départs) */
 .departs { margin-top: 18px; }
 .departs > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
@@ -475,6 +493,9 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .departs li.ajoute .calibre { background: var(--neutre); color: #fff; }
 .departs .fonctions { display: grid; gap: 1px; }
 .departs > p { margin-top: 6px; }
+.contenu-ensemble li { justify-content: space-between; }
+.contenu-ensemble .qte { flex: none; font-family: var(--din); font-size: var(--t-14); white-space: nowrap; }
+.contenu-ensemble li.ajoute .qte b { color: #fff; background: var(--neutre); border-radius: 4px; padding: 0 5px; }
 .a-faire { margin-top: 20px; }
 .a-faire h3 { margin-bottom: 8px; }
 .a-faire table { width: 100%; border-collapse: collapse; font-size: var(--t-12); }

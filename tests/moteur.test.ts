@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { calculer, modulesOnOff, modulesPourInter, nomCourt } from '../shared/lots/cfo/moteur';
 import { parametresParDefaut } from '../shared/lots';
-import { nouvellePiece } from '../shared/lots/cfo/pieces';
+import { nouvelElement, nouvellePiece } from '../shared/lots/cfo/pieces';
+import { CATALOGUE } from '../shared/lots/cfo/catalogue';
 import { villaDemo } from './fixtures';
 import { paramsTest } from './params-test';
 
@@ -68,6 +69,74 @@ test('villa démo : étiquettes des disjoncteurs', () => {
   assert.deepEqual(t('TGBT').D40, [['Départ TD Cuisine']]);
 });
 
+test('liaison bus : sous chaque TD qui contient du KNX, et seulement ceux-là', () => {
+  const d = villaDemo();
+  const blocsLiaison = (r: ReturnType<typeof calculer>) => r.lignes.filter((l) => l.ref === 'ENSELB').map((l) => l.bloc);
+  // les deux TD de la villa ont des circuits commandés en KNX : une liaison sous chacun, juste après l'ensemble
+  const r = calculer(d, params);
+  assert.deepEqual(blocsLiaison(r), ['Chambre 1', 'Cuisine']);
+  for (const bloc of ['Chambre 1', 'Cuisine']) {
+    const i = r.lignes.findIndex((l) => l.bloc === bloc && l.ref === 'ENSELB');
+    assert.equal(r.lignes[i - 1].ref, 'ENSETD1');
+  }
+  // la chambre n'a plus ni éclairage ni volet/ventilateur : son TD ne contient pas de KNX
+  const ch = d.pieces.find((p) => p.nom === 'Chambre 1')!;
+  ch.circuits.forEach((c) => { c.nb = 0; });
+  ch.elements = ch.elements.filter((e) => !CATALOGUE[e.cle]?.canal);
+  assert.deepEqual(blocsLiaison(calculer(d, params)), ['Cuisine']);
+});
+
+test('coffret trop petit : avertissement', () => {
+  const d = villaDemo();
+  d.pieces.find((p) => p.nom === 'Chambre 1')!.elements.push(nouvelElement('CLIM', 30));
+  const r = calculer(d, params);
+  assert.ok(r.alertes.some((a) => a.niveau === 'attention' && /TD Chambre 1 : \d+ modules pour 39 places/.test(a.message)));
+});
+
+test('TD tétra : départs répartis sur les 3 phases, différentiels par phase', () => {
+  const d = villaDemo();
+  d.pieces.find((p) => p.nom === 'Cuisine')!.tableau.phase = 'tetra';
+  const r = calculer(d, params);
+  const t = r.tableaux.find((x) => x.nom === 'TD Cuisine')!;
+  assert.equal(t.calculable, true);
+  assert.equal(t.ensemble, 'ENSETD3');
+  assert.ok(r.lignes.some((l) => l.bloc === 'Cuisine' && l.ref === 'ENSEALIMTD3'));
+  assert.ok(!r.alertes.some((a) => /TD Cuisine est en tétra/.test(a.message)));
+  // chaque départ 1P+N porte sa phase, et les trois phases servent
+  const unPhase = ['C10', 'C16', 'C20', 'C32'].flatMap((k) => t.departs[k] ?? []);
+  const phaseDe = (f: string[]) => /^(L[123]) · /.exec(f[0])?.[1];
+  assert.ok(unPhase.every((f) => phaseDe(f)));
+  assert.deepEqual(new Set(unPhase.map(phaseDe)), new Set(['L1', 'L2', 'L3']));
+  // charges équilibrées : l'écart ne dépasse pas le plus gros départ (la plaque, 6 kW)
+  const { L1, L2, L3 } = t.phases!;
+  assert.ok(Math.max(L1, L2, L3) - Math.min(L1, L2, L3) <= 6, `phases ${L1} / ${L2} / ${L3}`);
+  // au plus 8 circuits par interrupteur différentiel, sur sa phase ; la plaque est sous un ID type A de sa phase
+  const ids = [...(t.departs.IDA ?? []), ...(t.departs.IDAC ?? [])].map((f) => f[0].slice(-2));
+  for (const p of ['L1', 'L2', 'L3']) {
+    const n = unPhase.filter((f) => phaseDe(f) === p).length;
+    assert.ok(n <= 8 * ids.filter((x) => x === p).length, `${p} : ${n} circuits`);
+  }
+  const plaque = phaseDe(unPhase.find((f) => /Plaque de cuisson/.test(f[0]))!);
+  assert.ok((t.departs.IDA ?? []).some((f) => f[0] === `Différentiel ${plaque}`));
+});
+
+test('TD tétra : un disjoncteur différentiel 4P 30 mA par appareil 400 V', () => {
+  const d = villaDemo();
+  const cuisine = d.pieces.find((p) => p.nom === 'Cuisine')!;
+  cuisine.tableau.phase = 'tetra';
+  cuisine.elements.push(nouvelElement('PPIS400', 2), nouvelElement('DRV400', 1));
+  const r = calculer(d, params);
+  const t = r.tableaux.find((x) => x.nom === 'TD Cuisine')!;
+  const p = (k: string) => t.protections.find((x) => x.cle === k)!;
+  // deux pompes sur les trois 4P C10 30 mA de l'ensemble : le troisième reste en réserve
+  assert.deepEqual([p('DD4_C10_AC30').besoin, p('DD4_C10_AC30').final], [2, 3]);
+  assert.deepEqual(t.departs.DD4_C10_AC30, [['Pompe piscine (Cuisine)'], ['Pompe piscine (Cuisine)']]);
+  // le DRV demande un 4P C32 30 mA, dont la référence n'est pas connue : à choisir
+  assert.equal(p('DD4_C32_AC30').besoin, 1);
+  assert.ok(r.alertes.some((a) => /référence Legrand à choisir/.test(a.message)));
+  assert.ok(!r.alertes.some((a) => /est en 400 V alors que/.test(a.message)));
+});
+
 test('villa démo : tableaux à modifier', () => {
   const r = calculer(villaDemo(), params);
   const m = Object.fromEntries(r.aModifier.map((a) => [a.tableau, a.changements.map((c) => `${c.cle}:${c.base}>${c.final}`).join(' ')]));
@@ -101,13 +170,21 @@ test('mode classique : interrupteurs, pas de domotique ni de variation', () => {
   assert.deepEqual(r.lignes.filter((l) => ['ENSESA', 'ENSEVV', 'ENSEBPS'].includes(l.ref ?? '')).map((l) => `${l.ref}:${l.quantite}`), ['ENSESA:2', 'ENSEVV:1', 'ENSEBPS:1']);
 });
 
-test('tétra : pas de calcul, avertissement', () => {
+test('TGBT tétra : départs des TD répartis sur les phases', () => {
   const d = villaDemo();
-  d.pieces[0].tableau.phase = 'tetra';
+  d.pieces.find((p) => p.tableau.choix === 'TGBT')!.tableau.phase = 'tetra';
+  d.pieces.find((p) => p.nom === 'Cuisine')!.tableau.phase = 'tetra';
   const r = calculer(d, params);
-  assert.ok(r.lignes.some((l) => l.bloc === 'Chambre 1' && l.ref === 'ENSETD3'));
-  assert.ok(r.lignes.some((l) => l.bloc === 'Chambre 1' && l.ref === 'ENSEALIMTD1'));
-  assert.ok(r.alertes.some((a) => /TD Chambre 1 est en tétra/.test(a.message)));
+  const t = r.tableaux.find((x) => x.id === 'TGBT')!;
+  assert.equal(t.ensemble, 'ENSETGBTT');
+  assert.ok(t.phases);
+  // TD Chambre 1 (mono, 6 mm²) : départ 1P+N 300 mA sur une phase ; TD Cuisine (tétra) : départ 4P 300 mA
+  assert.match(t.departs.D32[0][0], /^L[123] · Départ TD Chambre 1$/);
+  assert.deepEqual(t.departs.DD4_C32_AC300, [['Départ TD Cuisine']]);
+  assert.ok(!r.alertes.some((a) => /à prévoir à la main/.test(a.message)));
+  // un TD tétra sous un TGBT monophasé reste à faire à la main
+  d.pieces.find((p) => p.tableau.choix === 'TGBT')!.tableau.phase = 'mono';
+  assert.ok(calculer(d, params).alertes.some((a) => /Départ des TD tétra \(TD Cuisine\) à prévoir à la main/.test(a.message)));
 });
 
 test('nouvelle pièce : questions par défaut', () => {

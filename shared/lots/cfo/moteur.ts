@@ -3,7 +3,8 @@ import type {
   Alerte, DevisData, LigneImport, Parametres, Piece, Protection, Resultat, TableauCalcule,
 } from '../../types';
 import {
-  ALIM_TD, CATALOGUE, NOTE_ML, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX, type ModeleTableau,
+  ALIM_TD, CATALOGUE, MODULES_PROTECTION, NOTE_ML, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX,
+  PROTECTION_TRI, placesCoffret, type ModeleTableau,
 } from './catalogue';
 import { TYPES_PIECES } from './pieces';
 
@@ -51,8 +52,8 @@ export function nomCourt(designation: string): string {
 interface Charge { quoi: string; piece: string; n: number }
 
 /** Répartit des charges sur des disjoncteurs de « taille » unités (8 points, 12 socles…) et nomme chaque départ. */
-function paquets(charges: Charge[], taille: number): string[][] {
-  const out: string[][] = [];
+function paquets(charges: Charge[], taille: number): { fonctions: string[]; n: number }[] {
+  const out: { fonctions: string[]; n: number }[] = [];
   let cur: Charge[] = []; let place = taille;
   const fermer = () => {
     if (!cur.length) return;
@@ -62,7 +63,7 @@ function paquets(charges: Charge[], taille: number): string[][] {
       if (!l.includes(c.piece)) l.push(c.piece);
       parQuoi.set(c.quoi, l);
     }
-    out.push([...parQuoi].map(([quoi, pieces]) => `${quoi} ${pieces.join(', ')}`));
+    out.push({ fonctions: [...parQuoi].map(([quoi, pieces]) => `${quoi} ${pieces.join(', ')}`), n: taille - place });
     cur = []; place = taille;
   };
   for (const c of charges) {
@@ -77,12 +78,45 @@ function paquets(charges: Charge[], taille: number): string[][] {
   return out;
 }
 
+// ---- répartition des charges sur les phases (tableaux tétra)
+// Puissances estimées, seulement pour équilibrer les phases entre elles (pas un bilan de puissance).
+const KW = {
+  point: 0.1,          // par point lumineux
+  socle: 0.15,         // par socle de prise de service
+  vr: 0.15,            // par volet, store, ventilateur…
+  dedie: { C10: 0.5, C16: 2, C20: 2, C32: 6 } as Record<string, number>,
+  diversiteTd: 0.6,    // un TD monophasé alimenté par le TGBT : sa charge totale × ce coefficient
+};
+export type Phase = 'L1' | 'L2' | 'L3';
+const PHASES: Phase[] = ['L1', 'L2', 'L3'];
+
+/** Un départ monophasé (1P+N) : ses fonctions, sa charge estimée, et la phase choisie en tétra. */
+interface Depart { cle: string; fonctions: string[]; kw: number; typeA: boolean; sousId: boolean; phase?: Phase }
+
+/**
+ * Répartit les départs monophasés sur les 3 phases : du plus chargé au moins chargé, chacun sur la phase
+ * la moins chargée à ce moment-là. Les appareils 400 V chargent déjà les 3 phases à parts égales.
+ */
+function repartir(departs: Depart[], chargeTri: number): Record<Phase, number> {
+  const charge: Record<Phase, number> = { L1: chargeTri / 3, L2: chargeTri / 3, L3: chargeTri / 3 };
+  const ordre = departs.map((d, i) => ({ d, i })).sort((a, b) => b.d.kw - a.d.kw || a.i - b.i);
+  for (const { d } of ordre) {
+    const p = PHASES.reduce((m, x) => (charge[x] < charge[m] ? x : m), 'L1' as Phase);
+    d.phase = p; charge[p] += d.kw;
+  }
+  return charge;
+}
+
 interface TableauInterne {
   id: string; nom: string; bloc: string; pieceId: string; modele: ModeleTableau; modeleCle: string; section: 6 | 10; phase: 'mono' | 'tetra';
   points: number; socles: number; vr: number; nA: number; ded: Record<string, number>;
   rattachees: string[]; detail: string[]; canaux: Record<string, number>;
   // ce que protège chaque départ, pour les étiquettes du tableau
-  fn: { lum: Charge[]; soc: Charge[]; vr: Charge[]; ded: Record<string, string[]> };
+  fn: {
+    lum: Charge[]; soc: Charge[]; vr: Charge[];
+    ded: Record<string, { libelle: string; kw: number; typeA: boolean }[]>;
+    tri: { libelle: string; cle: string; kw: number }[];          // appareils 400 V (tableaux tétra)
+  };
 }
 
 export function calculer(data: DevisData, params: Parametres): Resultat {
@@ -112,7 +146,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   const creerTableau = (id: string, nom: string, p: Piece, modeleCle: string): TableauInterne => ({
     id, nom, bloc: p.nom.trim(), pieceId: p.id, modele: TABLEAUX[modeleCle], modeleCle, section: p.tableau.section, phase: p.tableau.phase,
     points: 0, socles: 0, vr: 0, nA: 0, ded: {}, rattachees: [], detail: [], canaux: {},
-    fn: { lum: [], soc: [], vr: [], ded: {} },
+    fn: { lum: [], soc: [], vr: [], ded: {}, tri: [] },
   });
   if (tgbts[0]) {
     const p = tgbts[0];
@@ -138,6 +172,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   // ---------- lignes des pièces
   const lignes: LigneImport[] = [];
   const parInter: { piece: string; inter: number; boutons: number; modules: string }[] = [];
+  const liaisons: { td: string; bloc: string; index: number }[] = [];
   const ta: Record<string, number> = { TA2: 0, TA4: 0 };
   let detecteurs = 0;
 
@@ -201,13 +236,21 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
           t.fn.vr.push({ quoi: nomCourt(des), piece: b, n: e.quantite });
           break;
         case 'TRI':
-          if (t.modele.calculable) att(`${b} : « ${des} » est en 400 V alors que ${t.nom} est monophasé.`, p.id);
+          if (t.phase === 'tetra') {
+            // un disjoncteur différentiel 4P 30 mA par appareil, qui charge les 3 phases
+            for (let i = 0; i < e.quantite; i++) {
+              t.fn.tri.push({ libelle: `${nomCourt(des)} (${b})`, cle: PROTECTION_TRI[c.tri ?? 'C10'], kw: c.kw ?? 3 });
+            }
+            t.detail.push(`${b} : ${e.quantite} × ${des} (400 V)`);
+          } else if (t.modele.calculable) att(`${b} : « ${des} » est en 400 V alors que ${t.nom} est monophasé.`, p.id);
           break;
         case null: break;
         default:
           t.ded[c.protection] = (t.ded[c.protection] ?? 0) + e.quantite;
           if (c.typeA) t.nA += e.quantite;
-          for (let i = 0; i < e.quantite; i++) (t.fn.ded[c.protection] ??= []).push(`${nomCourt(des)} (${b})`);
+          for (let i = 0; i < e.quantite; i++) {
+            (t.fn.ded[c.protection] ??= []).push({ libelle: `${nomCourt(des)} (${b})`, kw: c.kw ?? KW.dedie[c.protection] ?? 1, typeA: !!c.typeA });
+          }
       }
       if (c.protection) t.detail.push(`${b} : ${e.quantite} × ${des}`);
     }
@@ -218,7 +261,8 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       const alim = ALIM_TD[`${p.tableau.phase}-${p.tableau.section}`];
       L(alim.code, alim.designation, 1);
       L(tab.modele.code, tab.modele.designation, 1);
-      if (knx) L('ENSELB', 'Liaison bus TD vers TGBT', 1);
+      // la liaison bus se place ici, mais on ne sait qu'à la fin si ce TD contient du KNX (voir plus bas)
+      if (knx) liaisons.push({ td: p.id, bloc: b, index: lignes.length });
     } else if (p.tableau.choix === 'TGBT') {
       const tab = tableaux.get('TGBT');
       if (tab && tab.pieceId === p.id) {
@@ -230,6 +274,16 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         }
         L(tab.modele.code, tab.modele.designation, 1);
       }
+    }
+  }
+
+  // ---------- liaison bus KNX : une sous chaque TD qui contient du KNX, c'est-à-dire des sorties d'actionneurs
+  // pour les circuits qu'il alimente (ses pièces et celles qui lui sont rattachées). Insérée de la fin vers le début
+  // pour que les positions notées restent justes.
+  for (const l of [...liaisons].reverse()) {
+    const td = tableaux.get(l.td);
+    if (td && Object.values(td.canaux).some((n) => n > 0)) {
+      lignes.splice(l.index, 0, { bloc: l.bloc, ref: 'ENSELB', designation: 'Liaison bus TD vers TGBT', quantite: 1 });
     }
   }
 
@@ -252,7 +306,9 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
     const tg = tableaux.get('TGBT');
     if (tg) {
       tg.ded.C10 = (tg.ded.C10 ?? 0) + total.ALIM; tg.detail.push(`Alimentation KNX 640 mA : ${total.ALIM}`);
-      for (let i = 0; i < total.ALIM; i++) (tg.fn.ded.C10 ??= []).push(total.ALIM > 1 ? `Alimentation KNX ${i + 1}` : 'Alimentation KNX');
+      for (let i = 0; i < total.ALIM; i++) {
+        (tg.fn.ded.C10 ??= []).push({ libelle: total.ALIM > 1 ? `Alimentation KNX ${i + 1}` : 'Alimentation KNX', kw: 0.05, typeA: false });
+      }
     }
     domotique = { modules: total, participants, parInter };
     if (data.domotique.heuresEts == null) err('Domotique : indique le nombre d’heures de programmation ETS.');
@@ -262,17 +318,35 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   const resTableaux: TableauCalcule[] = [];
   const aModifier: Resultat['aModifier'] = [];
   const tds = [...tableaux.values()].filter((t) => t.id !== 'TGBT');
+
+  // départs monophasés de chaque tableau, avec leur charge estimée. Mêmes règles que le comptage :
+  // 8 points ou 8 volets par C10, 12 socles par C20, un départ par équipement dédié.
+  const departsDe = (t: TableauInterne): Depart[] => {
+    const d = (cle: string, fonctions: string[], kw: number, typeA = false): Depart => ({ cle, fonctions, kw, typeA, sousId: true });
+    const ded = (k: string) => (t.fn.ded[k] ?? []).map((x) => d(k, [x.libelle], x.kw, x.typeA));
+    return [
+      ...paquets(t.fn.lum, 8).map((x) => d('C10', x.fonctions, x.n * KW.point)),
+      ...paquets(t.fn.vr, 8).map((x) => d('C10', x.fonctions, x.n * KW.vr)),
+      ...ded('C10'),
+      ...ded('C16'),
+      ...paquets(t.fn.soc, 12).map((x) => d('C20', x.fonctions, x.n * KW.socle)),
+      ...ded('C20'),
+      ...ded('C32'),
+    ];
+  };
+  const departsParTableau = new Map([...tableaux.values()].map((t) => [t.id, departsDe(t)]));
+  const chargeTotale = (t: TableauInterne) =>
+    (departsParTableau.get(t.id) ?? []).reduce((a, x) => a + x.kw, 0) + t.fn.tri.reduce((a, x) => a + x.kw, 0);
+
   for (const t of tableaux.values()) {
     const protections: Protection[] = [];
     const departs: Record<string, string[][]> = {};
     let nbCircuits = 0;
+    let phases: Record<Phase, number> | undefined;
+    const base = (k: string) => t.modele.base[k]?.q ?? 0;
     if (t.modele.calculable) {
-      // mêmes règles que le comptage ci-dessous : 8 points ou 8 volets par C10, 12 socles par C20, un départ par équipement dédié
-      const dedies = (k: string) => (t.fn.ded[k] ?? []).map((f) => [f]);
-      departs.C10 = [...paquets(t.fn.lum, 8), ...paquets(t.fn.vr, 8), ...dedies('C10')];
-      departs.C16 = dedies('C16');
-      departs.C20 = [...paquets(t.fn.soc, 12), ...dedies('C20')];
-      departs.C32 = dedies('C32');
+      const tetra = t.phase === 'tetra';
+      const liste = departsParTableau.get(t.id)!;
       const need: Record<string, number> = {
         C10: ceil(t.points, 8) + ceil(t.vr, 8) + (t.ded.C10 ?? 0),
         C16: t.ded.C16 ?? 0,
@@ -280,40 +354,100 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         C32: t.ded.C32 ?? 0,
       };
       nbCircuits = need.C10 + need.C16 + need.C20 + need.C32;
-      const base = (k: string) => t.modele.base[k]?.q ?? 0;
-      const idA = Math.max(base('IDA'), ceil(t.nA, 8));
-      need.IDA = idA;
-      // les ID type A peuvent aussi protéger des circuits AC : on ne rajoute de l'AC que pour le reste
-      need.IDAC = Math.max(base('IDAC'), ceil(Math.max(0, nbCircuits - idA * 8), 8));
+
+      // TGBT : un départ 1P+N 300 mA par TD monophasé (pas sous un ID 30 mA, il a son propre différentiel)
+      const versTd: Depart[] = [];
+      const tdTetra = tds.filter((x) => x.phase === 'tetra');
       if (t.id === 'TGBT') {
-        need.D32 = tds.filter((x) => x.phase === 'mono' && x.section === 6).length;
-        need.D40 = tds.filter((x) => x.phase === 'mono' && x.section === 10).length;
-        departs.D32 = tds.filter((x) => x.phase === 'mono' && x.section === 6).map((x) => [`Départ ${x.nom}`]);
-        departs.D40 = tds.filter((x) => x.phase === 'mono' && x.section === 10).map((x) => [`Départ ${x.nom}`]);
-        const tetra = tds.filter((x) => x.phase === 'tetra');
-        if (tetra.length) att(`Départ des TD tétra (${tetra.map((x) => x.nom).join(', ')}) à prévoir à la main dans le TGBT.`);
+        for (const [k, section] of [['D32', 6], ['D40', 10]] as const) {
+          const liste6ou10 = tds.filter((x) => x.phase === 'mono' && x.section === section);
+          need[k] = liste6ou10.length;
+          for (const x of liste6ou10) versTd.push({ cle: k, fonctions: [`Départ ${x.nom}`], kw: chargeTotale(x) * KW.diversiteTd, typeA: false, sousId: false });
+        }
       }
+      // protections 4P : un disjoncteur différentiel par appareil 400 V, et, au TGBT tétra, un départ par TD tétra
+      const quatre: { cle: string; fonctions: string[]; kw: number }[] = t.fn.tri.map((x) => ({ cle: x.cle, fonctions: [x.libelle], kw: x.kw }));
+      if (t.id === 'TGBT' && tdTetra.length) {
+        if (tetra) for (const x of tdTetra) quatre.push({ cle: 'DD4_C32_AC300', fonctions: [`Départ ${x.nom}`], kw: chargeTotale(x) * KW.diversiteTd });
+        else att(`Départ des TD tétra (${tdTetra.map((x) => x.nom).join(', ')}) à prévoir à la main dans le TGBT.`);
+      }
+      for (const q of quatre) need[q.cle] = (need[q.cle] ?? 0) + 1;
+
+      if (!tetra) {
+        const idA = Math.max(base('IDA'), ceil(t.nA, 8));
+        need.IDA = idA;
+        // les ID type A peuvent aussi protéger des circuits AC : on ne rajoute de l'AC que pour le reste
+        need.IDAC = Math.max(base('IDAC'), ceil(Math.max(0, nbCircuits - idA * 8), 8));
+      } else {
+        // tétra : chaque départ 1P+N va sur la phase la moins chargée (les plus gros d'abord), puis
+        // chaque interrupteur différentiel 2P protège au plus 8 circuits d'une même phase (type A s'il y en a un qui l'exige)
+        const charges = repartir([...liste, ...versTd], quatre.reduce((a, x) => a + x.kw, 0));
+        phases = { L1: Math.round(charges.L1 * 10) / 10, L2: Math.round(charges.L2 * 10) / 10, L3: Math.round(charges.L3 * 10) / 10 };
+        const idA: Record<Phase, number> = { L1: 0, L2: 0, L3: 0 };
+        const reste: Record<Phase, number> = { L1: 0, L2: 0, L3: 0 };
+        for (const p of PHASES) {
+          const sur = liste.filter((x) => x.phase === p);
+          idA[p] = ceil(sur.filter((x) => x.typeA).length, 8);
+          reste[p] = Math.max(0, sur.length - idA[p] * 8);
+        }
+        // les ID type A déjà facturés dans l'ensemble servent aussi aux circuits AC : on les place là où il en manque
+        let libres = Math.max(0, base('IDA') - PHASES.reduce((a, p) => a + idA[p], 0));
+        while (libres > 0) {
+          const p = PHASES.reduce((m, x) => (reste[x] > reste[m] ? x : m), 'L1' as Phase);
+          if (!reste[p]) break;
+          idA[p]++; reste[p] = Math.max(0, reste[p] - 8); libres--;
+        }
+        const idAC: Record<Phase, number> = { L1: ceil(reste.L1, 8), L2: ceil(reste.L2, 8), L3: ceil(reste.L3, 8) };
+        need.IDA = PHASES.reduce((a, p) => a + idA[p], 0);
+        need.IDAC = PHASES.reduce((a, p) => a + idAC[p], 0);
+        departs.IDA = PHASES.flatMap((p) => Array.from({ length: idA[p] }, () => [`Différentiel ${p}`]));
+        departs.IDAC = PHASES.flatMap((p) => Array.from({ length: idAC[p] }, () => [`Différentiel ${p}`]));
+        for (const k of ['DD4_C16_AC30', 'DD4_C32_AC30']) {
+          if (need[k]) att(`${t.nom} : ${need[k]} × ${PROTECTIONS[k].label.replace(' (référence à choisir)', '')}, référence Legrand à choisir dans Esabora.`, t.pieceId);
+        }
+      }
+      nbCircuits += quatre.length;
+
+      // étiquettes : en tétra, la phase devant la fonction (« L2 · Éclairage Salon »)
+      const etiquette = (x: Depart) => (x.phase ? [`${x.phase} · ${x.fonctions[0]}`, ...x.fonctions.slice(1)] : x.fonctions);
+      for (const k of ['C10', 'C16', 'C20', 'C32']) departs[k] = liste.filter((x) => x.cle === k).map(etiquette);
+      for (const x of versTd) (departs[x.cle] ??= []).push(etiquette(x));
+      for (const q of quatre) (departs[q.cle] ??= []).push(q.fonctions);
+
       for (const k of ORDRE_PROTECTIONS) {
         const n = need[k] ?? 0; const bq = base(k);
         if (!n && !bq) continue;
-        const pr: Protection = {
+        protections.push({
           cle: k, label: PROTECTIONS[k].label, ref: t.modele.base[k]?.ref ?? PROTECTIONS[k].ref,
           besoin: n, base: bq, final: Math.max(n, bq),
-        };
-        protections.push(pr);
+        });
       }
       const ch = protections.filter((x) => x.final !== x.base);
       if (ch.length) aModifier.push({ bloc: t.bloc, tableau: t.nom, ensemble: t.modele.code, changements: ch });
+
+      // le contenu final doit tenir sur les rails du coffret de l'ensemble
+      const places = placesCoffret(t.modele);
+      const occupes = (t.modele.fixes ?? []).reduce((a, f) => a + f.modules, 0)
+        + protections.reduce((a, x) => a + x.final * (MODULES_PROTECTION[x.cle] ?? 1), 0);
+      if (places && occupes > places) {
+        att(`${t.nom} : ${occupes} modules pour ${places} places dans le coffret (${t.modele.coffret!.nom}). Prévoir un coffret plus grand dans Esabora.`, t.pieceId);
+      }
     } else {
       att(`${t.nom} est en tétra : le calcul des disjoncteurs n’est pas géré, à faire dans Esabora.`, t.pieceId);
+      // on montre quand même le contenu de l'ensemble tel qu'il est facturé (rien n'est recalculé)
+      for (const k of ORDRE_PROTECTIONS) {
+        const bq = base(k);
+        if (bq) protections.push({ cle: k, label: PROTECTIONS[k].label, ref: t.modele.base[k]?.ref ?? PROTECTIONS[k].ref, besoin: bq, base: bq, final: bq });
+      }
     }
     resTableaux.push({
       id: t.id, nom: t.nom, bloc: t.bloc, ensemble: t.modele.code, modele: t.modeleCle, pieceId: t.pieceId, calculable: t.modele.calculable,
       points: t.points, socles: t.socles, appareilsVr: t.vr, circuitsA: t.nA, circuits: nbCircuits,
       protections, rattachees: t.rattachees, detail: t.detail, canaux: t.canaux, modules: modulesParTableau.get(t.id) ?? {},
-      departs,
+      departs, phases,
     });
   }
+
 
   // ordre d'affichage : celui des pièces dans le devis
   const rang = (pieceId: string) => pieces.findIndex((p) => p.id === pieceId);

@@ -2,6 +2,7 @@
 import { Component, Suspense, lazy, useState, type ReactNode } from 'react';
 import type { Devis, Piece, Resultat, TableauCalcule } from '../../../shared/types';
 import { disposition, type Mod } from '../../lib/coffret';
+import { TABLEAUX } from '../../../shared/lots/cfo/catalogue';
 import { Icone } from '../../lib/icones';
 import { Fenetre, Segments } from '../../lib/ui';
 
@@ -39,14 +40,18 @@ export function Vue3D({ t, grand }: { t: TableauCalcule; grand?: boolean }) {
 }
 
 export function SchemaTableau({ t }: { t: TableauCalcule }) {
-  const { rangees, utilises } = disposition(t);
+  const { rangees, utilises, parRangee } = disposition(t);
   return (
-    <div className="coffret" role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules`}>
+    <div className={`coffret${parRangee > 18 ? ' serre' : ''}`} role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules`}>
       {rangees.map((r, i) => (
-        <div className="rangee" key={i}>
+        <div className="rangee" key={i} style={{ gridTemplateColumns: `repeat(${parRangee}, minmax(0, 1fr))` }}>
           {r.map((x, j) => (
-            <div key={j} className={`module${x.largeur === 2 ? ' x2' : ''} ${x.etat}`} title={[x.fonctions?.join(' · ') ?? (x.etat === 'inutile' ? 'Réserve' : ''), x.nom || x.rep].filter(Boolean).join('\n')}>
-              <span className="rep">{x.rep}</span><span className="manette" /><span />
+            <div
+              key={j} className={`module${x.largeur > 1 ? ' x2' : ''} ${x.etat}${x.type ? ` ${x.type}` : ''}`}
+              style={x.largeur > 1 ? { gridColumn: `span ${x.largeur}` } : undefined}
+              title={[x.fonctions?.join(' · ') ?? (x.etat === 'inutile' ? 'Réserve' : ''), x.nom || x.rep].filter(Boolean).join('\n')}
+            >
+              <span className="rep">{x.rep}</span>{x.type !== 'bornier' && x.type !== 'repartiteur' && x.type !== 'transfo' && <span className="manette" />}<span />
             </div>
           ))}
         </div>
@@ -90,6 +95,30 @@ function VueTableau({ t, onAgrandir }: { t: TableauCalcule; onAgrandir: () => vo
       {mode === '3d' && <p className="aide-3d">Glisser pour tourner, double-clic pour recentrer. Survole un appareil pour son détail.</p>}
       <Legende />
       <Remplissage t={t} />
+    </div>
+  );
+}
+
+/** Tableaux tétra : charge estimée de chaque phase après répartition (couleurs normalisées : brun, noir, gris). */
+function Phases({ t }: { t: TableauCalcule }) {
+  if (!t.phases) return null;
+  const ph = t.phases;
+  const max = Math.max(ph.L1, ph.L2, ph.L3, 0.1);
+  const ecart = Math.max(ph.L1, ph.L2, ph.L3) - Math.min(ph.L1, ph.L2, ph.L3);
+  return (
+    <div className="phases">
+      <h3>Répartition sur les phases</h3>
+      {(['L1', 'L2', 'L3'] as const).map((p) => (
+        <div className="phase" key={p}>
+          <span className={`nom-phase ${p}`}>{p}</span>
+          <div className="barre-phase"><div className={p} style={{ width: `${(ph[p] / max) * 100}%` }} /></div>
+          <b className="num">{ph[p].toLocaleString('fr-FR')} kW</b>
+        </div>
+      ))}
+      <p className="petit discret">
+        Charges estimées (écart {ecart.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kW). Chaque départ porte sa phase sur son étiquette ;
+        chaque interrupteur différentiel protège au plus 8 circuits d’une même phase.
+      </p>
     </div>
   );
 }
@@ -179,7 +208,13 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
         {porte ? `Ensemble ${t.ensemble} dans cette pièce.` : <>Tableau situé dans <button className="lien" onClick={() => onSelection(t.pieceId)}>{t.bloc}</button>.</>}
       </p>
       {!t.calculable ? (
-        <div className="message attention">Tableau tétra : le calcul des disjoncteurs n’est pas géré. À faire directement dans Esabora.</div>
+        <>
+          <div className="message attention" style={{ marginBottom: 12 }}>
+            Tableau tétra : les disjoncteurs ne sont pas recalculés, à adapter dans Esabora. Ci-dessous, le contenu de l’ensemble tel qu’il est facturé.
+          </div>
+          {disposition(t).mods.length > 0 && <VueTableau t={t} onAgrandir={() => setGrand(t.id)} />}
+          <ContenuEnsemble t={t} resultat={resultat} />
+        </>
       ) : (
         <>
           <div className="chiffres">
@@ -188,8 +223,10 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
             <div><b>{t.circuits}</b><span>circuits</span></div>
           </div>
           <VueTableau t={t} onAgrandir={() => setGrand(t.id)} />
+          <Phases t={t} />
           <ListeDeparts t={t} />
           <AFaire t={t} resultat={resultat} />
+          <ContenuEnsemble t={t} resultat={resultat} />
         </>
       )}
       {modsKnx.length > 0 && (
@@ -205,8 +242,41 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
   );
 }
 
+/** Contenu de l'ensemble dans Esabora (coffret, appareils, accessoires), avec les quantités à changer après l'import. */
+function ContenuEnsemble({ t, resultat, ouvert = false }: { t: TableauCalcule; resultat: Resultat; ouvert?: boolean }) {
+  const modele = TABLEAUX[t.modele];
+  if (!modele?.contenu?.length) return null;
+  const changements = resultat.aModifier.find((a) => a.tableau === t.nom)?.changements ?? [];
+  const parRef = new Map(changements.map((c) => [c.ref, c]));
+  // protections à ajouter qui ne figurent pas du tout dans l'ensemble
+  const enPlus = changements.filter((c) => !modele.contenu!.some((l) => l.ref === c.ref));
+  return (
+    <details className="departs contenu-ensemble" open={ouvert}>
+      <summary><h3>Contenu de l’ensemble {modele.code}</h3><span className="compte">{modele.contenu.length}</span></summary>
+      <ul>
+        {modele.contenu.map((l, i) => {
+          const c = l.ref ? parRef.get(l.ref) : undefined;
+          return (
+            <li key={i} className={c ? 'ajoute' : ''}>
+              <span className="fonctions"><span>{l.nom}</span>{l.ref && <span className="petit discret">{l.ref}</span>}</span>
+              <span className="qte num">{c ? <>{c.base} → <b>{c.final}</b></> : l.q}</span>
+            </li>
+          );
+        })}
+        {enPlus.map((c) => (
+          <li key={c.cle} className="ajoute">
+            <span className="fonctions"><span>{c.label}</span><span className="petit discret">{c.ref}, à ajouter</span></span>
+            <span className="qte num">0 → <b>{c.final}</b></span>
+          </li>
+        ))}
+      </ul>
+      {modele.coffret && <p className="petit discret">Coffret de {modele.coffret.rangees} rangées de {modele.coffret.parRangee} modules.</p>}
+    </details>
+  );
+}
+
 function VueTableaux({ resultat, onSelection, onAgrandir }: { resultat: Resultat; onSelection: (s: string) => void; onAgrandir: (id: string) => void }) {
-  const calculables = resultat.tableaux.filter((t) => t.calculable);
+  const calculables = resultat.tableaux.filter((t) => disposition(t).mods.length > 0);
   return (
     <>
       <span className="surtitre">Vue d’ensemble</span>
@@ -238,9 +308,9 @@ function VueTableaux({ resultat, onSelection, onAgrandir }: { resultat: Resultat
   );
 }
 
-/** Fenêtre large : tous les tableaux calculables du devis, en 3D, avec leurs changements. */
+/** Fenêtre large : tous les tableaux du devis en 3D, avec leurs étiquettes, leurs changements et le contenu de l'ensemble. */
 function TableauxEnGrand({ resultat, initial, onFermer, onSelection }: { resultat: Resultat; initial: string; onFermer: () => void; onSelection: (s: string) => void }) {
-  const liste = resultat.tableaux.filter((t) => t.calculable);
+  const liste = resultat.tableaux.filter((t) => disposition(t).mods.length > 0);
   const [id, setId] = useState(initial);
   const t = liste.find((x) => x.id === id) ?? liste[0];
   if (!t) return null;
@@ -265,15 +335,19 @@ function TableauxEnGrand({ resultat, initial, onFermer, onSelection }: { resulta
         <div className="grand-infos">
           <span className="surtitre">{t.bloc}</span>
           <h3>{t.nom} <span className="pastille code">{t.ensemble}</span></h3>
-          <div className="chiffres">
-            <div><b>{t.points}</b><span>points</span></div>
-            <div><b>{t.socles}</b><span>socles</span></div>
-            <div><b>{t.circuits}</b><span>circuits</span></div>
-          </div>
+          {t.calculable ? (
+            <div className="chiffres">
+              <div><b>{t.points}</b><span>points</span></div>
+              <div><b>{t.socles}</b><span>socles</span></div>
+              <div><b>{t.circuits}</b><span>circuits</span></div>
+            </div>
+          ) : <div className="message attention petit">Tétra : contenu de l’ensemble, disjoncteurs à adapter dans Esabora.</div>}
           <Legende />
           <Remplissage t={t} />
+          <Phases t={t} />
           <ListeDeparts t={t} />
-          <AFaire t={t} resultat={resultat} />
+          {t.calculable && <AFaire t={t} resultat={resultat} />}
+          <ContenuEnsemble t={t} resultat={resultat} />
           <button className="btn petit" style={{ marginTop: 14 }} onClick={() => onSelection(t.pieceId)}>Ouvrir la pièce {t.bloc}</button>
         </div>
       </div>

@@ -31,7 +31,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
   }
   const tetra = r.tableaux.filter((t) => !t.calculable);
   if (tetra.length) {
-    mod.push([], [c('Tableaux tétra : calcul non géré, à faire dans Esabora', S.SOUS_TITRE)]);
+    mod.push([], [c('Tableaux non calculés (local plomberie tétra) : à faire dans Esabora', S.SOUS_TITRE)]);
     for (const t of tetra) mod.push([c(`Bloc « ${t.bloc} »  >  ensemble ${t.ensemble}`)]);
   }
 
@@ -51,6 +51,11 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     det.push([c(`Points lumineux : ${t.points}  |  Socles de prises : ${t.socles}  |  Volets/stores/rideaux/ventilos/portail : ${t.appareilsVr}  |  Circuits type A : ${t.circuitsA}  |  Circuits au total : ${t.circuits}`)]);
     det.push(['Protection', 'Besoin', "Minimum de l'ensemble", 'Quantité finale', 'Référence'].map((h) => c(h, S.TH)));
     for (const p of t.protections) det.push([c(p.label), c(p.besoin), c(p.base), c(p.final), c(p.ref)]);
+    if (t.phases) {
+      det.push([c(`Répartition estimée des charges : L1 ${t.phases.L1} kW  |  L2 ${t.phases.L2} kW  |  L3 ${t.phases.L3} kW`)]);
+      det.push([c('Départs et phases :')]);
+      for (const [k, liste] of Object.entries(t.departs)) for (const f of liste) det.push([c(`   ${k} : ${f.join(' / ')}`)]);
+    }
     det.push([c('Rattaché à ce tableau :')]);
     for (const d of t.detail) det.push([c(`   ${d}`)]);
   }

@@ -9,7 +9,7 @@ export const NOTE_ML =
  *  'P'   prises de service : C20, 12 socles max par disjoncteur
  *  'VR'  volets, stores, rideaux, ventilateurs, portail : C10, 8 appareils max
  *  'C10' | 'C16' | 'C20' | 'C32' : circuit dédié
- *  'TRI' appareil 400 V (à vérifier dans un tableau tétra)
+ *  'TRI' appareil 400 V : disjoncteur différentiel 4P 30 mA dans un tableau tétra (calibre : champ « tri »)
  *  null  pas de disjoncteur
  */
 export type Protection = 'P' | 'VR' | 'C10' | 'C16' | 'C20' | 'C32' | 'TRI' | null;
@@ -24,6 +24,8 @@ export interface ItemCatalogue {
   canal?: 'onoff' | 'jm';     // canal domotique consommé (KNX)
   poseMo1?: number;           // ajoute une ligne de pose MO1 (heures)
   poseDes?: string;
+  tri?: 'C10' | 'C16' | 'C32'; // appareil 400 V : calibre du disjoncteur différentiel 4P
+  kw?: number;                // puissance estimée pour répartir les charges sur les phases (sinon : selon le calibre)
 }
 
 const PCDI = (q: string): ItemCatalogue => ({
@@ -78,13 +80,13 @@ export const CATALOGUE: Record<string, ItemCatalogue> = {
 
   // --- eau chaude, piscine, plomberie
   CE: { code: 'ENSECE', designation: 'Alimentation chauffe eau 220V', groupe: 'Plomberie / piscine', protection: 'C20' },
-  CE400: { code: 'ENSECE1', designation: 'Alimentation chauffe eau 400V', groupe: 'Plomberie / piscine', protection: 'TRI' },
+  CE400: { code: 'ENSECE1', designation: 'Alimentation chauffe eau 400V', groupe: 'Plomberie / piscine', protection: 'TRI', tri: 'C16', kw: 6 },
   PPIS: { code: 'ENSEPPIS', designation: 'Alimentation pompe Piscine 220V', groupe: 'Plomberie / piscine', protection: 'C16' },
-  PPIS400: { code: 'ENSEPISC1', designation: 'Alimentation pompe piscine 400V', groupe: 'Plomberie / piscine', protection: 'TRI' },
+  PPIS400: { code: 'ENSEPISC1', designation: 'Alimentation pompe piscine 400V', groupe: 'Plomberie / piscine', protection: 'TRI', tri: 'C10', kw: 1.5 },
   CIT: { code: 'ENSECIT', designation: 'Alimentation pompe citerne 220V', groupe: 'Plomberie / piscine', protection: 'C16' },
-  CIT400: { code: 'ENSECIT1', designation: 'Alimentation pompe citerne 400V', groupe: 'Plomberie / piscine', protection: 'TRI' },
+  CIT400: { code: 'ENSECIT1', designation: 'Alimentation pompe citerne 400V', groupe: 'Plomberie / piscine', protection: 'TRI', tri: 'C10', kw: 1.5 },
   PEV: { code: 'ENSEPEV', designation: 'Alimentation pompe eau de ville 220V', groupe: 'Plomberie / piscine', protection: 'C16' },
-  PEV400: { code: 'ENSEPEV1', designation: 'Alimentation pompe eau de ville 400V', groupe: 'Plomberie / piscine', protection: 'TRI' },
+  PEV400: { code: 'ENSEPEV1', designation: 'Alimentation pompe eau de ville 400V', groupe: 'Plomberie / piscine', protection: 'TRI', tri: 'C10', kw: 1.5 },
   RELEVAGE: { code: 'ENSEPEV', designation: 'Alimentation pompe de relevage', groupe: 'Plomberie / piscine', protection: 'C16' },
   FPIS: { code: 'ENSEFPIS', designation: 'Alimentation filtre piscine 220V', groupe: 'Plomberie / piscine', protection: 'C16' },
   ELCY: { code: 'ENSEELCY', designation: 'Alimentation électrolyse 220V', groupe: 'Plomberie / piscine', protection: 'C16' },
@@ -107,9 +109,9 @@ export const CATALOGUE: Record<string, ItemCatalogue> = {
   ENRTRI: { code: 'ENSEENRTRI', designation: 'Branchement alimentation dans le tableau Solaire tétra', groupe: 'Local technique', protection: null },
   BAIE: { code: 'ENSEBAIE', designation: 'Alimentation baie informatique', groupe: 'Local technique', protection: 'C32' },
   DRV220: { code: 'ENSEASC', designation: 'Alimentation DRV 3g6mm² 220V', groupe: 'Local technique', protection: 'C32' },
-  DRV400: { code: 'ENSEASC1', designation: 'Alimentation DRV 400V 5G6MM² avec coupure', groupe: 'Local technique', protection: 'TRI' },
+  DRV400: { code: 'ENSEASC1', designation: 'Alimentation DRV 400V 5G6MM² avec coupure', groupe: 'Local technique', protection: 'TRI', tri: 'C32', kw: 12 },
   MONTECHARGE: { code: 'ENSEASC', designation: 'Alimentation monte-charge 3g6mm² 220V', groupe: 'Local technique', protection: 'C32' },
-  ASCENSEUR: { code: 'ENSEASC1', designation: 'Alimentation ascenseur 400V 5G6MM²', groupe: 'Local technique', protection: 'TRI' },
+  ASCENSEUR: { code: 'ENSEASC1', designation: 'Alimentation ascenseur 400V 5G6MM²', groupe: 'Local technique', protection: 'TRI', tri: 'C32', kw: 8 },
   GE: { code: 'ENSEVR', designation: 'Alimentation GE analyse du groupe', groupe: 'Local technique', protection: 'C10' },
   TERRE_GE: { code: 'ENSETP', designation: 'Mise à la terre et sertissage GE cablette de cuivre nu 35mm²', groupe: 'Local technique', protection: null },
 };
@@ -139,7 +141,10 @@ export const HEURES_POSE: Record<string, number | null> = {
   std: 1, led_facile: 1, led_difficile: 2, aucune: null,
 };
 
-// ---- Tableaux : contenu minimum des ensembles (ce qui est déjà facturé)
+// ---- Tableaux : contenu des ensembles Esabora (ENSETD1, ENSETGBT…), relevé dans Esabora.
+// Ces lignes ne sont PAS exportées : l'export n'importe que le code de l'ensemble. Elles servent à construire
+// les tableaux (taille du coffret, appareils fixes, quantités déjà facturées) et à les afficher.
+// Les prix ne sont jamais dans le code.
 
 export const PROTECTIONS: Record<string, { label: string; ref: string }> = {
   C10: { label: 'Disjoncteur DNX3 1P+N C10', ref: 'Leg 406782' },
@@ -150,41 +155,182 @@ export const PROTECTIONS: Record<string, { label: string; ref: string }> = {
   IDA: { label: 'Interrupteur différentiel DX3-ID 2P 63A 30mA type A', ref: 'Leg 411651' },
   D32: { label: 'Disjoncteur différentiel DX3 1P+N C32 300mA (départ TD 6mm²)', ref: 'Leg 410728' },
   D40: { label: 'Disjoncteur différentiel DX3 1P+N C40 300mA (départ TD 10mm²)', ref: 'Leg 410729' },
+  // disjoncteurs différentiels tétrapolaires des ensembles tétra (4 modules)
+  DD4_C10_AC30: { label: 'Disjoncteur différentiel DX3 4P C10 30mA type AC', ref: 'Leg 411185' },
+  DD4_C10_AC300: { label: 'Disjoncteur différentiel DX3 4P C10 300mA type AC', ref: 'Leg 411204' },
+  DD4_C16_A300: { label: 'Disjoncteur différentiel DX3 4P C16 300mA type A', ref: 'Leg 411239' },
+  DD4_C20_A300: { label: 'Disjoncteur différentiel DX3 4P C20 300mA type A', ref: 'Leg 411240' },
+  DD4_C32_AC300: { label: 'Disjoncteur différentiel DX3 4P C32 300mA type AC', ref: 'Leg 411208' },
+  // calibres 4P 30 mA sans référence relevée dans les ensembles : référence à choisir dans Esabora
+  DD4_C16_AC30: { label: 'Disjoncteur différentiel 4P C16 30mA type AC (référence à choisir)', ref: '' },
+  DD4_C32_AC30: { label: 'Disjoncteur différentiel 4P C32 30mA type AC (référence à choisir)', ref: '' },
 };
-export const ORDRE_PROTECTIONS = ['C10', 'C16', 'C20', 'C32', 'IDAC', 'IDA', 'D32', 'D40'];
+export const ORDRE_PROTECTIONS = [
+  'C10', 'C16', 'C20', 'C32', 'IDAC', 'IDA', 'D32', 'D40',
+  'DD4_C10_AC30', 'DD4_C16_AC30', 'DD4_C32_AC30', 'DD4_C10_AC300', 'DD4_C16_A300', 'DD4_C20_A300', 'DD4_C32_AC300',
+];
+/** Disjoncteur différentiel 4P 30 mA d'un appareil 400 V, selon son calibre. */
+export const PROTECTION_TRI: Record<string, string> = { C10: 'DD4_C10_AC30', C16: 'DD4_C16_AC30', C32: 'DD4_C32_AC30' };
+
+/** Largeur en modules des protections. */
+export const MODULES_PROTECTION: Record<string, number> = {
+  C10: 1, C16: 1, C20: 1, C32: 1, IDAC: 2, IDA: 2, D32: 2, D40: 2,
+  DD4_C10_AC30: 4, DD4_C16_AC30: 4, DD4_C32_AC30: 4, DD4_C10_AC300: 4, DD4_C16_A300: 4, DD4_C20_A300: 4, DD4_C32_AC300: 4,
+};
+
+/** Appareil fixe de l'ensemble (toujours présent, jamais modifié par le calcul). */
+export interface AppareilFixe {
+  type: 'is' | 'tl' | 'horloge' | 'transfo' | 'repartiteur' | 'bornier';
+  label: string;          // repère court sur le schéma (« IS 63A »)
+  nom: string;            // libellé Esabora
+  ref: string;
+  modules: number;        // largeur sur le rail
+  fin?: boolean;          // placé après les protections (borniers)
+}
 
 export interface ModeleTableau {
   code: string;
   designation: string;
-  calculable: boolean;                                // false = tétra, à faire dans Esabora
-  base: Record<string, { q: number; ref?: string }>;  // quantités incluses (ref si différente)
-  capacite?: number;                                  // modules disponibles dans le coffret (si connu)
-  fixes?: { label: string; modules: number }[];       // appareils fixes de l'ensemble (pour le schéma)
+  calculable: boolean;                                // false = disjoncteurs à adapter dans Esabora (plomberie tétra)
+  base: Record<string, { q: number; ref?: string }>;  // protections incluses (ref si différente de PROTECTIONS)
+  coffret?: { ref: string; nom: string; rangees: number; parRangee: number; teinte?: 'blanc' | 'gris' };
+  fixes?: AppareilFixe[];
+  /** Contenu complet de l'ensemble dans Esabora (sans les prix), pour information. */
+  contenu?: { ref?: string; nom: string; q: number }[];
 }
 
-/** Largeur en modules des protections (pour le schéma du tableau). */
-export const MODULES_PROTECTION: Record<string, number> = { C10: 1, C16: 1, C20: 1, C32: 1, IDAC: 2, IDA: 2, D32: 2, D40: 2 };
+const IS = (label: string, nom: string, ref: string, modules: number): AppareilFixe => ({ type: 'is', label, nom, ref, modules });
+const TL: AppareilFixe = { type: 'tl', label: 'TL 16A', nom: 'CX3 TL 230V 1F 16A SILENCIEUX', ref: 'Leg 412400', modules: 1 };
+const REP_4P: AppareilFixe = { type: 'repartiteur', label: 'Répartiteur 4P 125A', nom: 'REP MOD 4P 125A 10M', ref: 'Leg 400410', modules: 10 };
+// 10 blocs de passage à vis 4 mm² (pas de 6 mm) : 60 mm, soit 4 emplacements de 18 mm sur le rail
+const BORNIER: AppareilFixe = { type: 'bornier', label: 'Bornier (10)', nom: 'BLOC PASS.VIS 1 JONCT. 4 GRIS (× 10)', ref: 'Leg 037161', modules: 4, fin: true };
+const MO = (h: number) => ({ nom: `Main d’œuvre (${h} h)`, q: 1 });
 
 export const TABLEAUX: Record<string, ModeleTableau> = {
   TD_MONO: {
     code: 'ENSETD1', designation: 'Tableau TD monophasé', calculable: true,
     base: { C10: { q: 1 }, C16: { q: 1 }, C20: { q: 1 }, C32: { q: 1 }, IDAC: { q: 1 }, IDA: { q: 1 } },
-    capacite: 39, fixes: [{ label: 'IS 63A', modules: 2 }, { label: 'TL 16A', modules: 1 }],
+    coffret: { ref: 'Leg 401213', nom: 'COFFRET SAILLIE 3RX13M BCA', rangees: 3, parRangee: 13, teinte: 'blanc' },
+    fixes: [IS('IS 63A', 'DX3 IS 2P 63A', 'Leg 406441', 2), TL],
+    contenu: [
+      { ref: 'Leg 401213', nom: 'COFFRET SAILLIE 3RX13M BCA', q: 1 },
+      { ref: 'Leg 093032', nom: 'PORTE BLANCHE TABLEAU 3R', q: 1 },
+      { ref: 'Leg 406441', nom: 'DX3 IS 2P 63A', q: 1 },
+      { ref: 'Leg 411650', nom: 'DX3-ID 2P 63A AC 30MA TGA', q: 1 },
+      { ref: 'Leg 411651', nom: 'DX3-ID 2P 63A A 30MA TGA', q: 1 },
+      { ref: 'Leg 406782', nom: 'DNX3 1P+NG C10 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406783', nom: 'DNX3 1P+NG C16 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406784', nom: 'DNX3 1P+NG C20 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406786', nom: 'DNX3 1P+NG C32 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 412400', nom: 'CX3 TL 230V 1F 16A SILENCIEUX', q: 1 },
+      { ref: 'Leg 405001', nom: 'PEIGNE VERTICAL 3R 125MM', q: 1 },
+      { ref: 'Leg 404926', nom: 'PEIGNE POUR 13 APPAREILS 1P+N', q: 1 },
+      { nom: 'DIVERS CABLE SOUPLE', q: 1 },
+      MO(14),
+    ],
   },
   TD_PLOMB: {
     code: 'ENSETDPLOMB', designation: 'Tableau local Plomberie monophasé', calculable: true,
     base: { C10: { q: 3, ref: 'Leg 406773' }, C16: { q: 9, ref: 'Leg 406774' }, C32: { q: 1 }, IDAC: { q: 3 } },
-    fixes: [{ label: 'IS 32A', modules: 2 }, { label: 'Horloge', modules: 1 }],
+    coffret: { ref: 'Leg 001927', nom: 'COFFRET PLEXO3 IP65 4X18M', rangees: 4, parRangee: 18, teinte: 'gris' },
+    fixes: [
+      IS('IS 32A', 'DX3 IS 2P 32A', 'Leg 406434', 2),
+      { type: 'horloge', label: 'Horloge', nom: 'IH ANALOGIQUE J 1M RDM', ref: 'Leg 412794', modules: 1 },
+      // largeur supposée : 2 modules (à corriger si besoin)
+      { type: 'transfo', label: 'Transfo 12/24V', nom: 'TRANSFO DE SECURITE 12/24 16VA', ref: 'Leg 413095', modules: 2 },
+    ],
+    contenu: [
+      { ref: 'Leg 001927', nom: 'COFFRET PLEXO3 IP65 4X18M', q: 1 },
+      { ref: 'Leg 406434', nom: 'DX3 IS 2P 32A', q: 1 },
+      { ref: 'Leg 411650', nom: 'DX3-ID 2P 63A AC 30MA TGA', q: 3 },
+      { ref: 'Leg 406773', nom: 'DNX3 1P+NG C10 4500A/6KA', q: 3 },
+      { ref: 'Leg 406774', nom: 'DNX3 1P+NG C16 4500A/6KA', q: 9 },
+      { ref: 'Leg 412794', nom: 'IH ANALOGIQUE J 1M RDM', q: 1 },
+      { ref: 'Leg 406786', nom: 'DNX3 1P+NG C32 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 413095', nom: 'TRANSFO DE SECURITE 12/24 16VA', q: 1 },
+      MO(14),
+    ],
   },
-  TD_TETRA: { code: 'ENSETD3', designation: 'Tableau TD tétra', calculable: false, base: {} },
+  TD_TETRA: {
+    code: 'ENSETD3', designation: 'Tableau TD tétra', calculable: true,
+    base: { C10: { q: 4, ref: 'Leg 406773' }, C16: { q: 6 }, C32: { q: 1 }, IDA: { q: 1 }, DD4_C10_AC30: { q: 3 } },
+    coffret: { ref: 'Leg 001927', nom: 'COFFRET PLEXO3 IP65 4X18M', rangees: 4, parRangee: 18, teinte: 'gris' },
+    fixes: [IS('IS 4P 63A', 'DX3 IS 4P 63A', 'Leg 406481', 4), REP_4P, BORNIER],
+    contenu: [
+      { ref: 'Leg 001927', nom: 'COFFRET PLEXO3 IP65 4X18M', q: 1 },
+      { ref: 'Leg 406481', nom: 'DX3 IS 4P 63A', q: 1 },
+      { ref: 'Leg 400410', nom: 'REP MOD 4P 125A 10M', q: 1 },
+      { ref: 'Leg 411185', nom: 'DX3 4P C10 6000A AC 30MA 4M', q: 3 },
+      { ref: 'Leg 406773', nom: 'DNX3 1P+NG C10 4500A/6KA', q: 4 },
+      { ref: 'Leg 406783', nom: 'DNX3 1P+NG C16 4500A/6KA AUTO', q: 6 },
+      { ref: 'Leg 411651', nom: 'DX3-ID 2P 63A A 30MA TGA', q: 1 },
+      { ref: 'Leg 037161', nom: 'BLOC PASS.VIS 1 JONCT. 4 GRIS', q: 10 },
+      { ref: 'Leg 404926', nom: 'PEIGNE POUR 13 APPAREILS 1P+N', q: 4 },
+      { ref: 'Leg 406786', nom: 'DNX3 1P+NG C32 4500A/6KA AUTO', q: 1 },
+      MO(14),
+    ],
+  },
+  // pas d'ensemble plomberie tétra relevé : même code que le mono, à adapter dans Esabora
   TD_PLOMB_TETRA: { code: 'ENSETDPLOMB', designation: 'Tableau local Plomberie tétra', calculable: false, base: {} },
   TGBT_MONO: {
     code: 'ENSETGBT', designation: 'Tableau TGBT monophasé', calculable: true,
     base: { C10: { q: 7 }, C16: { q: 11 }, IDA: { q: 3 }, D32: { q: 3 } },
-    fixes: [{ label: 'IS 100A', modules: 2 }],
+    coffret: { ref: 'Leg 401805', nom: 'XL3 160 COMPLET ISOLANT 5R', rangees: 5, parRangee: 24, teinte: 'blanc' },
+    fixes: [
+      IS('IS 100A', 'DX3 IS 2P 100A', 'Leg 406449', 2),
+      { type: 'repartiteur', label: 'Répartiteur 2P 125A', nom: 'REP MOD 2P 125A 8M', ref: 'Leg 400403', modules: 8 },
+      BORNIER,
+    ],
+    contenu: [
+      { nom: 'DIVERS cable souple bornier', q: 1 },
+      { ref: 'Leg 406449', nom: 'DX3 IS 2P 100A', q: 1 },
+      { ref: 'Leg 410728', nom: 'DX3 1P+NG C32 4,5/6K AC 300MA', q: 3 },
+      { ref: 'Leg 411651', nom: 'DX3-ID 2P 63A A 30MA TGA', q: 3 },
+      { ref: 'Leg 406782', nom: 'DNX3 1P+NG C10 4500A/6KA AUTO', q: 7 },
+      { ref: 'Leg 406783', nom: 'DNX3 1P+NG C16 4500A/6KA AUTO', q: 11 },
+      { ref: 'Leg 037161', nom: 'BLOC PASS.VIS 1 JONCT. 4 GRIS', q: 10 },
+      { ref: 'Leg 404926', nom: 'PEIGNE POUR 13 APPAREILS 1P+N', q: 6 },
+      { ref: 'Leg 400403', nom: 'REP MOD 2P 125A 8M', q: 1 },
+      { ref: 'Leg 020255', nom: 'PORTE GALBEE METALLIQUE H900', q: 1 },
+      { ref: 'Leg 401805', nom: 'XL3 160 COMPLET ISOLANT 5R', q: 1 },
+      MO(24),
+    ],
   },
-  TGBT_TETRA: { code: 'ENSETGBTT', designation: 'Tableau TGBT tétra', calculable: false, base: {} },
+  TGBT_TETRA: {
+    code: 'ENSETGBTT', designation: 'Tableau TGBT tétra', calculable: true,
+    base: {
+      C10: { q: 1 }, C16: { q: 1 }, C20: { q: 1 }, C32: { q: 1 }, IDAC: { q: 1 }, IDA: { q: 1 }, D32: { q: 1 }, D40: { q: 1 },
+      DD4_C10_AC300: { q: 1 }, DD4_C16_A300: { q: 1 }, DD4_C20_A300: { q: 1 }, DD4_C32_AC300: { q: 1 },
+    },
+    coffret: { ref: 'Leg 401806', nom: 'XL3 160 COMPLET ISOLANT 6R', rangees: 6, parRangee: 24, teinte: 'blanc' },
+    fixes: [IS('IS 4P 100A', 'DX3 IS 4P 100A', 'Leg 406489', 4), REP_4P, TL],
+    contenu: [
+      { ref: 'Leg 406489', nom: 'DX3 IS 4P 100A', q: 1 },
+      { ref: 'Leg 401806', nom: 'XL3 160 COMPLET ISOLANT 6R', q: 1 },
+      { ref: 'Leg 400410', nom: 'REP MOD 4P 125A 10M', q: 1 },
+      { ref: 'Leg 410728', nom: 'DX3 1P+NG C32 4,5/6K AC 300MA', q: 1 },
+      { ref: 'Leg 410729', nom: 'DX3 1P+NG C40 4,5/6K AC 300MA', q: 1 },
+      { ref: 'Leg 411239', nom: 'DX3 4P C16 6000A A 300MA 4M', q: 1 },
+      { ref: 'Leg 411240', nom: 'DX3 4P C20 6000A A 300MA 4M', q: 1 },
+      { ref: 'Leg 411208', nom: 'DX3 4P C32 6000A AC 300MA 4M', q: 1 },
+      { ref: 'Leg 411204', nom: 'DX3 4P C10 6000A AC 300MA 4M', q: 1 },
+      { ref: 'Leg 411650', nom: 'DX3-ID 2P 63A AC 30MA TGA', q: 1 },
+      { ref: 'Leg 411651', nom: 'DX3-ID 2P 63A A 30MA TGA', q: 1 },
+      { ref: 'Leg 406782', nom: 'DNX3 1P+NG C10 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406783', nom: 'DNX3 1P+NG C16 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406784', nom: 'DNX3 1P+NG C20 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 406786', nom: 'DNX3 1P+NG C32 4500A/6KA AUTO', q: 1 },
+      { ref: 'Leg 412400', nom: 'CX3 TL 230V 1F 16A SILENCIEUX', q: 1 },
+      { ref: 'Leg 404926', nom: 'PEIGNE POUR 13 APPAREILS 1P+N', q: 1 },
+      MO(26),
+    ],
+  },
 };
+
+/** Places sur les rails du coffret, et modules occupés par le contenu final d'un tableau. */
+export function placesCoffret(m: ModeleTableau): number | undefined {
+  return m.coffret ? m.coffret.rangees * m.coffret.parRangee : undefined;
+}
 
 export const ALIM_TD: Record<string, { code: string; designation: string }> = {
   'mono-6': { code: 'ENSEALIMTD', designation: 'Alimentation TD vers TGBT 3G6mm² sous tpc 40 rouge.' + NOTE_ML },

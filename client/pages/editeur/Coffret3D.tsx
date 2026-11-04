@@ -10,7 +10,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { TableauCalcule } from '../../../shared/types';
-import { LIBELLE_ETAT, PAR_RANGEE, disposition, type Mod } from '../../lib/coffret';
+import { LIBELLE_ETAT, PAR_RANGEE_DEFAUT, disposition, type Mod } from '../../lib/coffret';
 import { Atelier } from './legrand';
 
 // ---- dimensions en centimètres (un module DIN fait 18 mm)
@@ -18,17 +18,20 @@ const W = 1.8;
 const PAS = 11;            // entraxe des rails
 const FENETRE = 4.8;       // découpe du plastron (le nez des appareils passe au travers)
 const MARGE = 1.8;
-const LARG_UTILE = PAR_RANGEE * W;
-const LARG = LARG_UTILE + 2 * MARGE;
 const Z_FOND = -3.3;
 const Z_FACE = 2.75;       // face avant du corps des appareils = arrière du plastron
 const EP_PLASTRON = 0.32;
 
 // coffret et rails ; les appareils eux-mêmes sont dans legrand.ts
-const C = { plastron: 0xe1e4e0, coffret: 0xc9cfcc, fond: 0xb9c0bd, rail: 0xc4cbcc, survol: 0x1f5fae };
+type Teinte = 'blanc' | 'gris';
+const TEINTES: Record<Teinte, { plastron: number; coffret: number; fond: number }> = {
+  blanc: { plastron: 0xe1e4e0, coffret: 0xc9cfcc, fond: 0xb9c0bd },      // coffret saillie, XL³ isolant
+  gris: { plastron: 0xc3c8c7, coffret: 0xaab0af, fond: 0x9ca3a2 },       // Plexo³ IP65, gris clair
+};
+const C = { rail: 0xc4cbcc, survol: 0x1f5fae };
 
-export function longueurVue(nbRangees: number) {
-  return { largeur: LARG + 0.8, hauteur: nbRangees * PAS + 1.6 };
+export function longueurVue(nbRangees: number, parRangee: number) {
+  return { largeur: parRangee * W + 2 * MARGE + 0.8, hauteur: nbRangees * PAS + 1.6 };
 }
 
 function reduitMouvement() {
@@ -83,10 +86,10 @@ function ecrireFonctions(g: CanvasRenderingContext2D, fonctions: string[], x: nu
 }
 
 /** Bande du porte-étiquette d'une rangée : la fonction de chaque disjoncteur, comme on l'écrit sur un vrai tableau. */
-function texteRangee(r: Mod[]): CanvasTexture {
+function texteRangee(r: Mod[], parRangee: number): CanvasTexture {
   const px = PX_MODULE;
   const c = document.createElement('canvas');
-  c.width = PAR_RANGEE * px; c.height = Math.round((px * HAUT_ETIQ) / W);
+  c.width = parRangee * px; c.height = Math.round((px * HAUT_ETIQ) / W);
   const g = c.getContext('2d')!;
   g.fillStyle = '#fdfdfb'; g.fillRect(0, 0, c.width, c.height);
   let x = 0;
@@ -224,7 +227,10 @@ class Vue {
   }
 
   /** Reconstruit le coffret. Les appareils qui n'existaient pas au tour précédent arrivent avec une petite animation. */
-  construire(rangees: Mod[][], id: string) {
+  construire(rangees: Mod[][], id: string, parRangee = PAR_RANGEE_DEFAUT, teinte: Teinte = 'blanc') {
+    const LARG_UTILE = parRangee * W;
+    const LARG = LARG_UTILE + 2 * MARGE;
+    const T = TEINTES[teinte];
     for (const o of [...this.contenu.children]) this.contenu.remove(o);
     for (const j of this.jetables.splice(2)) j.dispose();   // garde l'environnement (2 premiers)
     this.cibles = []; this.survole = null; this.bulle.hidden = true;
@@ -235,8 +241,8 @@ class Vue {
     const yRang = (i: number) => haut / 2 - 0.6 - PAS / 2 - i * PAS;
 
     // coffret : fond et bords
-    const mCoffret = this.mat({ color: C.coffret, roughness: 0.55 });
-    const fond = new Mesh(new BoxGeometry(LARG + 0.8, haut + 0.8, 0.3), this.mat({ color: C.fond, roughness: 0.7 }));
+    const mCoffret = this.mat({ color: T.coffret, roughness: 0.55 });
+    const fond = new Mesh(new BoxGeometry(LARG + 0.8, haut + 0.8, 0.3), this.mat({ color: T.fond, roughness: 0.7 }));
     fond.position.z = Z_FOND - 0.15; fond.receiveShadow = true;
     this.contenu.add(fond);
     const prof = Z_FACE - Z_FOND;
@@ -258,14 +264,14 @@ class Vue {
       forme.holes.push(trou);
     }
     const gPlastron = new ExtrudeGeometry(forme, { depth: EP_PLASTRON, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2 });
-    const plastron = new Mesh(gPlastron, this.mat({ color: C.plastron, roughness: 0.42 }));
+    const plastron = new Mesh(gPlastron, this.mat({ color: T.plastron, roughness: 0.42 }));
     plastron.position.z = Z_FACE + 0.02; plastron.castShadow = plastron.receiveShadow = true;
     this.contenu.add(plastron);
     this.jetables.push(gPlastron);
 
     const mRail = this.mat({ color: C.rail, metalness: 0.55, roughness: 0.38 });
-    const gRailA = this.geo('railA', () => new BoxGeometry(LARG_UTILE + 1.2, 3.5, 0.12));
-    const gRailB = this.geo('railB', () => new BoxGeometry(LARG_UTILE + 1.2, 2.5, 0.75));
+    const gRailA = this.geo(`railA${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 3.5, 0.12));
+    const gRailB = this.geo(`railB${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 2.5, 0.75));
 
     const nouveaux = new Set<string>();
     const animer = !reduitMouvement();
@@ -279,7 +285,7 @@ class Vue {
       this.contenu.add(railA, railB);
 
       // porte-étiquette au-dessus de la découpe
-      const tex = texteRangee(r);
+      const tex = texteRangee(r, parRangee);
       const gEt = new PlaneGeometry(LARG_UTILE, HAUT_ETIQ);
       const et = new Mesh(gEt, new MeshBasicMaterial({ map: tex, toneMapped: false }));
       et.position.set(0, y + FENETRE / 2 + 0.35 + HAUT_ETIQ / 2, Z_FACE + EP_PLASTRON + 0.09);
@@ -316,7 +322,7 @@ class Vue {
     this.soleil.target.position.set(0, 0, 0);
 
     // on ne recadre que si le coffret change de forme : renommer une pièce ne doit pas remettre la vue à zéro
-    const cadre = `${id}|${n}`;
+    const cadre = `${id}|${n}|${parRangee}`;
     if (cadre !== this.dernierCadre) { this.dernierCadre = cadre; this.recadrer(); } else this.demander();
   }
 
@@ -438,7 +444,7 @@ export default function Coffret3D({ t, grand = false, onErreur }: { t: TableauCa
   const vue = useRef<Vue | null>(null);
   const d = disposition(t);
   // reconstruit la scène si un appareil, son état ou son étiquette change (renommer une pièce change les étiquettes)
-  const signature = `${t.id}|${d.rangees.map((r) => r.map((m) => `${m.cle}${m.etat}${m.fonctions?.join('+') ?? ''}`).join(',')).join('/')}`;
+  const signature = `${t.id}|${d.parRangee}|${d.coffret?.teinte}|${d.rangees.map((r) => r.map((m) => `${m.cle}${m.etat}${m.fonctions?.join('+') ?? ''}`).join(',')).join('/')}`;
 
   useEffect(() => {
     try { vue.current = new Vue(hote.current!, grand); }
@@ -446,9 +452,9 @@ export default function Coffret3D({ t, grand = false, onErreur }: { t: TableauCa
     return () => { vue.current?.detruire(); vue.current = null; };
   }, [grand]);
 
-  useEffect(() => { vue.current?.construire(d.rangees, t.id); }, [signature, grand]);
+  useEffect(() => { vue.current?.construire(d.rangees, t.id, d.parRangee, d.coffret?.teinte); }, [signature, grand]);
 
-  const { largeur, hauteur } = longueurVue(d.rangees.length);
+  const { largeur, hauteur } = longueurVue(d.rangees.length, d.parRangee);
   return (
     <div
       ref={hote} className={`coffret-3d${grand ? ' grand' : ''}`}

@@ -11,21 +11,18 @@ import type { Mod } from '../../lib/coffret';
 
 export interface Cotes { W: number; FENETRE: number; Z_FACE: number; Z_FOND: number }
 
-type Genre = 'dnx' | 'id' | 'diff' | 'is' | 'tl' | 'horloge';
+type Genre = 'dnx' | 'id' | 'diff' | 'is' | 'tl' | 'horloge' | 'transfo' | 'repartiteur' | 'bornier';
 
 function genre(m: Mod): Genre {
   if (m.cle === 'IDAC' || m.cle === 'IDA') return 'id';
-  if (m.cle === 'D32' || m.cle === 'D40') return 'diff';
-  if (m.etat === 'fixe') {
-    const r = m.rep.toUpperCase();
-    if (r.startsWith('IS')) return 'is';
-    if (r.startsWith('TL')) return 'tl';
-    if (r.includes('HORLOGE')) return 'horloge';
-  }
+  if (m.cle === 'D32' || m.cle === 'D40' || m.cle.startsWith('DD4')) return 'diff';
+  if (m.etat === 'fixe') return m.type ?? 'is';
   return 'dnx';
 }
 
-const TEINTE = { inclus: 0xf8f8f5, ajoute: 0xdbe7f8, inutile: 0xd2d7d6, fixe: 0xf2f2ed };
+const TEINTE = { inclus: 0xf8f8f5, ajoute: 0xdbe7f8, inutile: 0xd2d7d6, fixe: 0xf2f2ed, repartiteur: 0xdfe3e2, bornier: 0x8c9397 };
+/** Couleurs des pôles sur les répartiteurs : N bleu, L1 marron, L2 noir, L3 gris. */
+const POLES = ['#2f6fb5', '#7a4a2a', '#22272b', '#8f979b'];
 const MANETTE = 0x3a4046;      // anthracite
 const BOUTON_TEST = 0xc9ced0;
 const BLEU = 0x1f5fae;
@@ -129,7 +126,7 @@ export class Atelier {
 
   private marquage(m: Mod, type: Genre, fw: number, fh: number, w: number): CanvasTexture {
     const ajoute = m.etat === 'ajoute', ferme = m.etat !== 'inutile';
-    const cle = `${type}|${m.rep}|${fw.toFixed(2)}|${ajoute}|${ferme}`;
+    const cle = `${type}|${m.cle}|${m.rep}|${m.ref ?? ''}|${fw.toFixed(2)}|${ajoute}|${ferme}`;
     let t = this.textures.get(cle);
     if (t) return t;
     const f = new Face(fw, fh);
@@ -151,7 +148,7 @@ export class Atelier {
     } else if (type === 'id' || type === 'diff') {
       const g = -w / 4, d = w / 4;
       f.texte('legrand', -fw / 2 + 0.12, haut - 0.26, 0.24, { gras: true, couleur: gris, align: 'left' });
-      f.texte(type === 'id' ? 'DX³-ID' : 'DX³ 4500', fw / 2 - 0.12, haut - 0.26, 0.21, { gras: true, din: true, couleur: '#3d464c', align: 'right' });
+      f.texte(type === 'id' ? 'DX³-ID' : m.cle.startsWith('DD4') ? 'DX³ 6000' : 'DX³ 4500', fw / 2 - 0.12, haut - 0.26, 0.21, { gras: true, din: true, couleur: '#3d464c', align: 'right' });
       const titre = type === 'id' ? `ID ${intensite ?? 63}A · 30mA` : `${l1} · ${l2 || '300mA'}`;
       f.texte(titre, 0, haut - 0.8, 0.44, { gras: true, din: true, couleur: calibre });
       f.fente(g, 0, 1.0, 1.9);
@@ -159,11 +156,12 @@ export class Atelier {
       f.g.strokeStyle = '#8f989c'; f.g.lineWidth = 0.025 * K;
       f.g.strokeRect(f.X(d - 0.36), f.Y(0.71), 0.72 * K, 0.72 * K);
       f.texte('T', d + 0.52, 0.35, 0.22, { gras: true, couleur: '#3d464c' });
-      const typeA = m.cle === 'IDA';
+      const typeA = m.cle === 'IDA' || /_A\d+$/.test(m.cle);     // DD4_C16_A300 = type A ; DD4_C10_AC30 = type AC
       f.symbole(d, -0.42, typeA);
-      f.texte(type === 'id' ? (typeA ? 'type A' : 'type AC') : 'type AC', d, -0.82, 0.22, { gras: true, couleur: '#3d464c' });
+      f.texte(typeA ? 'type A' : 'type AC', d, -0.82, 0.22, { gras: true, couleur: '#3d464c' });
       f.voyant(g, -1.55, ferme);
-      f.texte(type === 'id' ? 'IΔn 30 mA' : 'IΔn 300 mA', d, -1.55, 0.2, { couleur: '#3d464c' });
+      const sensibilite = type === 'id' ? '30 mA' : (l2 || '300mA').replace(/mA$/, ' mA');
+      f.texte(`IΔn ${sensibilite}`, d, -1.55, 0.2, { couleur: '#3d464c' });
       f.texte(ref ? `230 V~   ${ref}` : '230 V~', 0, -1.95, 0.17, { couleur: gris, din: true });
     } else if (type === 'is') {
       f.texte('legrand', -fw / 2 + 0.12, haut - 0.26, 0.24, { gras: true, couleur: gris, align: 'left' });
@@ -179,15 +177,74 @@ export class Atelier {
       f.texte('230 V~', 0, -1.25, 0.2, { couleur: '#3d464c' });
       f.g.fillStyle = ferme ? '#e8a33a' : '#9aa2a5';
       f.g.beginPath(); f.g.arc(f.X(0), f.Y(-1.7), 0.12 * K, 0, Math.PI * 2); f.g.fill();
-    } else {
+    } else if (type === 'horloge') {
+      // interrupteur horaire analogique journalier : cadran 24 h à segments, curseur de marche forcée
       f.texte('legrand', 0, haut - 0.28, 0.25, { gras: true, couleur: gris });
-      f.texte('HORLOGE', 0, haut - 0.72, 0.24, { gras: true, din: true, couleur: calibre });
-      for (const [i, s] of ['◄', '►', 'OK'].entries()) {
-        const x = (i - 1) * 0.42;
-        f.g.fillStyle = '#c9ced0'; f.g.beginPath(); f.g.arc(f.X(x), f.Y(-0.9), 0.16 * K, 0, Math.PI * 2); f.g.fill();
-        f.texte(s, x, -1.25, 0.15, { gras: true, couleur: '#3d464c' });
+      const cy = 0.45, r = Math.min(fw / 2 - 0.08, 0.7);
+      const g = f.g;
+      g.fillStyle = '#eef0ef'; g.strokeStyle = '#5d666c'; g.lineWidth = 0.03 * K;
+      g.beginPath(); g.arc(f.X(0), f.Y(cy), r * K, 0, Math.PI * 2); g.fill(); g.stroke();
+      for (let i = 0; i < 48; i++) {               // segments d'un quart d'heure… regroupés par demi-heure
+        const a0 = (i / 48) * Math.PI * 2 - Math.PI / 2, a1 = ((i + 0.8) / 48) * Math.PI * 2 - Math.PI / 2;
+        g.fillStyle = i >= 14 && i < 22 || i >= 36 && i < 44 ? '#c8312b' : '#c9ced0';     // deux plages « marche »
+        g.beginPath(); g.moveTo(f.X(0), f.Y(cy));
+        g.arc(f.X(0), f.Y(cy), r * 0.96 * K, a0, a1); g.closePath(); g.fill();
       }
-      f.texte('230 V~', 0, -1.75, 0.18, { couleur: gris });
+      g.fillStyle = '#eef0ef'; g.beginPath(); g.arc(f.X(0), f.Y(cy), r * 0.62 * K, 0, Math.PI * 2); g.fill();
+      f.texte('24h', 0, cy, 0.16, { gras: true, couleur: '#3d464c' });
+      g.fillStyle = '#1b2328';                      // index de l'heure
+      g.beginPath(); g.moveTo(f.X(0), f.Y(cy + r + 0.05)); g.lineTo(f.X(-0.08), f.Y(cy + r + 0.2)); g.lineTo(f.X(0.08), f.Y(cy + r + 0.2)); g.fill();
+      f.texte('1  0  ⊙', 0, -0.75, 0.15, { gras: true, couleur: '#3d464c' });
+      f.texte('IH', 0, -1.25, 0.22, { gras: true, din: true, couleur: calibre });
+      if (ref) f.texte(ref, 0, -1.6, 0.15, { couleur: gris, din: true });
+      f.texte('230 V~', 0, -1.9, 0.15, { couleur: gris });
+    } else if (type === 'transfo') {
+      f.texte('legrand', 0, haut - 0.28, 0.25, { gras: true, couleur: gris });
+      f.texte('TRANSFO', 0, haut - 0.75, 0.32, { gras: true, din: true, couleur: calibre });
+      f.texte('de sécurité', 0, haut - 1.08, 0.18, { couleur: '#3d464c' });
+      // symbole du transformateur de sécurité : deux cercles entrelacés
+      const g = f.g;
+      g.strokeStyle = '#1b2328'; g.lineWidth = 0.035 * K;
+      for (const dx of [-0.17, 0.17]) { g.beginPath(); g.arc(f.X(dx), f.Y(0.1), 0.3 * K, 0, Math.PI * 2); g.stroke(); }
+      f.texte('230 V / 12-24 V', 0, -0.6, 0.18, { gras: true, couleur: '#3d464c' });
+      f.texte('16 VA', 0, -0.92, 0.22, { gras: true, din: true, couleur: '#3d464c' });
+      if (ref) f.texte(ref, 0, -1.3, 0.15, { couleur: gris, din: true });
+      for (const dx of [-0.5, -0.17, 0.17, 0.5]) { g.fillStyle = '#5d666c'; g.beginPath(); g.arc(f.X(dx), f.Y(-1.8), 0.09 * K, 0, Math.PI * 2); g.fill(); }
+    } else if (type === 'repartiteur') {
+      // répartiteur modulaire : une barrette par pôle, repérée par sa couleur, avec ses bornes de départ
+      const poles = /4P/.test(m.rep) ? 4 : 2;
+      f.texte('legrand', -fw / 2 + 0.12, haut - 0.26, 0.24, { gras: true, couleur: gris, align: 'left' });
+      f.texte(m.rep.replace('Répartiteur ', ''), fw / 2 - 0.12, haut - 0.26, 0.24, { gras: true, din: true, couleur: '#3d464c', align: 'right' });
+      const g = f.g;
+      const pas = (fh - 1.1) / poles;
+      for (let p = 0; p < poles; p++) {
+        const y = haut - 0.75 - pas * (p + 0.5);
+        g.fillStyle = POLES[poles === 2 ? (p === 0 ? 1 : 0) : (p + 1) % 4];
+        g.fillRect(f.X(-fw / 2 + 0.1), f.Y(y + 0.11), 0.22 * K, 0.22 * K);
+        const n = Math.max(6, Math.floor((fw - 0.6) / 0.42));
+        for (let i = 0; i < n; i++) {
+          const x = -fw / 2 + 0.55 + i * ((fw - 0.75) / (n - 1));
+          g.fillStyle = '#2a3035'; g.beginPath(); g.arc(f.X(x), f.Y(y), 0.1 * K, 0, Math.PI * 2); g.fill();
+          g.fillStyle = '#9aa2a5'; g.beginPath(); g.arc(f.X(x), f.Y(y), 0.045 * K, 0, Math.PI * 2); g.fill();
+        }
+      }
+      if (ref) f.texte(ref, fw / 2 - 0.12, -haut + 0.2, 0.15, { couleur: gris, din: true, align: 'right' });
+    } else {
+      // bornier : blocs de passage à vis, gris, l'un contre l'autre
+      const g = f.g;
+      const n = 10, l = fw / n;
+      for (let i = 0; i < n; i++) {
+        const x0 = -fw / 2 + i * l;
+        g.fillStyle = i % 2 ? '#7f878b' : '#878f93'; g.fillRect(f.X(x0), f.Y(haut), l * K, fh * K);
+        g.fillStyle = '#5f676b'; g.fillRect(f.X(x0 + l - 0.02), f.Y(haut), 0.02 * K, fh * K);
+        for (const y of [haut - 0.55, -haut + 0.55]) {
+          g.fillStyle = '#3c4246'; g.beginPath(); g.arc(f.X(x0 + l / 2), f.Y(y), Math.min(0.16, l * 0.36) * K, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = '#b5bcbf'; g.lineWidth = 0.02 * K;
+          g.beginPath(); g.moveTo(f.X(x0 + l / 2 - 0.1), f.Y(y)); g.lineTo(f.X(x0 + l / 2 + 0.1), f.Y(y)); g.stroke();
+        }
+        g.fillStyle = '#f2f2ee'; g.fillRect(f.X(x0 + 0.04), f.Y(0.25), (l - 0.08) * K, 0.5 * K);   // repère blanc
+        f.texte(String(i + 1), x0 + l / 2, 0, 0.17, { gras: true, couleur: '#3d464c', max: l - 0.06 });
+      }
     }
     t = new CanvasTexture(f.c);
     t.colorSpace = SRGBColorSpace;
@@ -202,7 +259,8 @@ export class Atelier {
     const type = genre(m);
     const w = m.largeur * W - 0.07;
     const ferme = m.etat !== 'inutile';
-    const teinte = m.etat === 'ajoute' ? TEINTE.ajoute : m.etat === 'inutile' ? TEINTE.inutile : m.etat === 'fixe' ? TEINTE.fixe : TEINTE.inclus;
+    const teinte = type === 'repartiteur' ? TEINTE.repartiteur : type === 'bornier' ? TEINTE.bornier
+      : m.etat === 'ajoute' ? TEINTE.ajoute : m.etat === 'inutile' ? TEINTE.inutile : m.etat === 'fixe' ? TEINTE.fixe : TEINTE.inclus;
     const g = new Group();
 
     const mCorps = new MeshStandardMaterial({ color: teinte, roughness: 0.6 });
@@ -248,15 +306,18 @@ export class Atelier {
       bouton.position.set(w / 4, 0.35, zAvant + 0.1);
       bouton.castShadow = true;
       g.add(bouton);
-    } else {
-      // horloge : afficheur à cristaux liquides
-      const ecran = new Mesh(
-        this.geo(`ecran${m.largeur}`, () => new BoxGeometry(w - 0.42, 1.05, 0.08)),
-        this.mat('ecran', () => new MeshStandardMaterial({ color: 0x9db0a4, roughness: 0.2, emissive: 0x334a3c, emissiveIntensity: 0.25 })),
+    } else if (type === 'horloge') {
+      // cadran sous un capot transparent légèrement bombé, et petit curseur de marche forcée
+      const capot = new Mesh(
+        this.geo('capot', () => new RoundedBoxGeometry(w - 0.28, 1.55, 0.18, 3, 0.08)),
+        this.mat('capot', () => new MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, transparent: true, opacity: 0.18, depthWrite: false })),
       );
-      ecran.position.set(0, 0.32, zAvant + 0.02);
-      g.add(ecran);
+      capot.position.set(0, 0.45, zAvant + 0.09);
+      const curseur = new Mesh(this.geo('curseur', () => new RoundedBoxGeometry(0.2, 0.3, 0.2, 1, 0.05)), mMan);
+      curseur.position.set(0, -0.48, zAvant + 0.08);
+      g.add(capot, curseur);
     }
+    // transformateur, répartiteur et bornier : pas de manette
 
     // appareil à ajouter : liseré bleu sur le dessus du nez
     if (m.etat === 'ajoute') {

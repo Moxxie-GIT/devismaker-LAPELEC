@@ -164,6 +164,8 @@ export interface TableauCalcule {
   modules: Record<string, number>;
   /** Fonction(s) de chaque disjoncteur nécessaire, par protection (C10, C20…) : départs[cle][n] = fonctions du n-ième. */
   departs: Record<string, string[][]>;
+  /** Tableaux tétra : charge estimée de chaque phase (kW) après répartition des départs. */
+  phases?: { L1: number; L2: number; L3: number };
 }
 
 export interface Alerte {
