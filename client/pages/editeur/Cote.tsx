@@ -127,25 +127,36 @@ function Phases({ t }: { t: TableauCalcule }) {
 const calibre = (m: Mod) => m.rep.split('\n')[0];
 
 /** Les départs du tableau en clair : ce qui est écrit sur l'étiquette de chaque disjoncteur. */
+/** La disposition du tableau en clair, rangée par rangée : chaque différentiel suivi de ses disjoncteurs et de leur étiquette. */
 function ListeDeparts({ t, ouvert = true }: { t: TableauCalcule; ouvert?: boolean }) {
-  const { mods } = disposition(t);
-  const departs = mods.filter((m) => m.fonctions?.length);
-  const reserve = mods.filter((m) => m.etat === 'inutile');
-  if (!departs.length) return null;
+  const { rangees, rangeesUtiles } = disposition(t);
+  const nbDeparts = rangees.flat().filter((m) => m.fonctions?.length && !m.cle.startsWith('ID')).length;
+  if (!nbDeparts) return null;
   return (
     <details className="departs" open={ouvert}>
-      <summary><h3>Étiquettes du tableau</h3><span className="compte">{departs.length}</span></summary>
-      <ul>
-        {departs.map((m, i) => (
-          <li key={i} className={m.etat === 'ajoute' ? 'ajoute' : ''}>
-            <span className="calibre">{calibre(m)}</span>
-            <span className="fonctions">{m.fonctions!.map((f, k) => <span key={k}>{f}</span>)}</span>
-          </li>
-        ))}
-      </ul>
-      {reserve.length > 0 && (
-        <p className="petit discret">En réserve (facturés, non utilisés) : {reserve.map(calibre).join(', ')}.</p>
-      )}
+      <summary><h3>Disposition et étiquettes</h3><span className="compte">{rangeesUtiles} rangée{rangeesUtiles > 1 ? 's' : ''}</span></summary>
+      {rangees.slice(0, rangeesUtiles).map((r, n) => (
+        <div key={n} className="rangee-liste">
+          <span className="titre-rangee">Rangée {n + 1}</span>
+          <ul>
+            {r.filter((m) => m.etat !== 'libre').map((m, i) => {
+              const id = m.cle.startsWith('ID');
+              const classe = id ? 'tete-id' : m.etat === 'fixe' ? 'fixe' : m.groupe ? 'sous-id' : '';
+              return (
+                <li key={i} className={`${classe}${m.etat === 'ajoute' ? ' ajoute' : ''}${m.etat === 'inutile' ? ' reserve' : ''}`}>
+                  <span className="calibre">{id ? m.rep.replace('\n', ' ') : m.etat === 'fixe' ? m.rep : calibre(m)}</span>
+                  <span className="fonctions">
+                    {id ? <span><b>{m.fonctions?.[0]}</b> · {m.fonctions?.[1]}</span>
+                      : m.fonctions?.length ? m.fonctions.map((f, k) => <span key={k}>{f}</span>)
+                        : <span className="discret">{m.etat === 'inutile' ? 'Réserve' : m.nom}</span>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+      <p className="petit discret">Chaque interrupteur différentiel protège au plus 8 disjoncteurs, posés à sa suite sur le même rail.</p>
     </details>
   );
 }

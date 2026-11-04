@@ -5,6 +5,8 @@ import { calculer, modulesOnOff, modulesPourInter, nomCourt } from '../shared/lo
 import { parametresParDefaut } from '../shared/lots';
 import { nouvelElement, nouvellePiece } from '../shared/lots/cfo/pieces';
 import { CATALOGUE } from '../shared/lots/cfo/catalogue';
+import { disposer } from '../shared/lots/cfo/disposition';
+import { totauxParBloc } from '../shared/totaux';
 import { villaDemo } from './fixtures';
 import { paramsTest } from './params-test';
 
@@ -135,6 +137,52 @@ test('TD tétra : un disjoncteur différentiel 4P 30 mA par appareil 400 V', () 
   assert.equal(p('DD4_C32_AC30').besoin, 1);
   assert.ok(r.alertes.some((a) => /référence Legrand à choisir/.test(a.message)));
   assert.ok(!r.alertes.some((a) => /est en 400 V alors que/.test(a.message)));
+});
+
+test('disposition aux normes : 8 circuits au plus par ID, type A sous ID A, groupes jamais coupés', () => {
+  for (const tetra of [false, true]) {
+    const d = villaDemo();
+    if (tetra) { d.pieces.find((p) => p.nom === 'Cuisine')!.tableau.phase = 'tetra'; d.pieces.find((p) => p.tableau.choix === 'TGBT')!.tableau.phase = 'tetra'; }
+    const r = calculer(d, params);
+    for (const t of r.tableaux.filter((x) => x.calculable)) {
+      const groupes = t.groupes!;
+      // chaque disjoncteur 1P+N facturé est placé une fois et une seule
+      for (const p of t.protections.filter((x) => ['C10', 'C16', 'C20', 'C32'].includes(x.cle))) {
+        const places = groupes.flatMap((g) => g.membres).filter((m) => m.cle === p.cle).map((m) => m.i).sort((a, b) => a - b);
+        assert.deepEqual(places, Array.from({ length: p.final }, (_, i) => i), `${t.nom} ${p.cle}`);
+      }
+      const besoin = (k: string) => t.protections.find((x) => x.cle === k)?.besoin ?? 0;
+      for (const g of groupes.filter((x) => x.tete)) {
+        assert.ok(g.membres.length <= 8, `${t.nom} ${g.libelle} : ${g.membres.length}`);
+        for (const m of g.membres.filter((x) => x.i < besoin(x.cle))) {
+          const f = t.departs[m.cle][m.i].join(' ');
+          if (/Plaque de cuisson|Machine à laver/.test(f)) assert.equal(g.tete!.cle, 'IDA', `${t.nom} : ${f}`);
+          if (tetra && t.phases) assert.ok(g.libelle.endsWith(`(${f.slice(0, 2)})`), `${t.nom} : ${f} sous ${g.libelle}`);
+        }
+      }
+      // une suite « ID + ses disjoncteurs » tient sur une seule rangée
+      const dsp = disposer(t);
+      for (const g of groupes.filter((x) => x.tete)) {
+        const rangs = dsp.rangees.map((rg, i) => (rg.some((m) => m.groupe === g.libelle || (m.fonctions?.[0] === g.libelle)) ? i : -1)).filter((i) => i >= 0);
+        assert.equal(rangs.length, 1, `${t.nom} ${g.libelle} sur ${rangs.length} rangées`);
+      }
+    }
+  }
+});
+
+test('totaux par bloc : montants des blocs chiffrés, heures de pose des pièces', () => {
+  const r = calculer(villaDemo(), params);
+  const { blocs, general } = totauxParBloc(r.lignes);
+  assert.deepEqual(blocs.map((b) => b.bloc), [...new Set(r.lignes.map((l) => l.bloc))]);
+  const ch = blocs.find((b) => b.bloc === 'Chambre 1')!;
+  assert.equal(ch.total, null);
+  assert.equal(ch.heures, r.lignes.filter((l) => l.bloc === 'Chambre 1').reduce((a, l) => a + (l.moUnit ?? 0) * l.quantite, 0));
+  // Domotique : même formule que l'écran Domotique (arrondi au centime par ligne)
+  const dom = blocs.find((b) => b.bloc === 'Domotique')!;
+  const attendu = r.lignes.filter((l) => l.bloc === 'Domotique')
+    .reduce((a, l) => a + l.quantite * (Math.round(l.pu! * l.coefMat! * 100) / 100 + Math.round(l.moUnit! * l.tauxMo! * l.coefMo! * 100) / 100), 0);
+  assert.equal(dom.total, Math.round(attendu * 100) / 100);
+  assert.equal(general.total, Math.round(blocs.reduce((a, b) => a + (b.total ?? 0), 0) * 100) / 100);
 });
 
 test('villa démo : tableaux à modifier', () => {

@@ -166,6 +166,18 @@ export interface TableauCalcule {
   departs: Record<string, string[][]>;
   /** Tableaux tétra : charge estimée de chaque phase (kW) après répartition des départs. */
   phases?: { L1: number; L2: number; L3: number };
+  /**
+   * Disposition aux normes : chaque interrupteur différentiel (tete) suivi des disjoncteurs qu'il protège (8 au plus).
+   * Un appareil est désigné par sa protection et son rang : { cle: 'C10', i: 2 } = 3e C10 du tableau.
+   * Un groupe sans tête regroupe les appareils qui ont leur propre différentiel (départs 300 mA, 4P).
+   */
+  groupes?: GroupeTableau[];
+}
+
+export interface GroupeTableau {
+  libelle: string;
+  tete?: { cle: string; i: number };
+  membres: { cle: string; i: number }[];
 }
 
 export interface Alerte {

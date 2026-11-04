@@ -493,6 +493,15 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .departs li.ajoute .calibre { background: var(--neutre); color: #fff; }
 .departs .fonctions { display: grid; gap: 1px; }
 .departs > p { margin-top: 6px; }
+.rangee-liste { margin-top: 10px; }
+.rangee-liste .titre-rangee { display: block; font: 600 var(--t-11)/1.4 var(--din); text-transform: uppercase; letter-spacing: 0.06em; color: var(--encre-3); margin-bottom: 4px; }
+.rangee-liste ul { margin-top: 0; }
+.departs li.tete-id { background: var(--surface-2); }
+.departs li.tete-id .calibre { background: var(--encre); color: #fff; }
+.departs li.sous-id { padding-left: 22px; position: relative; }
+.departs li.sous-id::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; width: 1px; background: var(--trait-fort); }
+.departs li.fixe .calibre { background: transparent; border: 1px solid var(--trait-fort); }
+.departs li.reserve { color: var(--encre-3); }
 .contenu-ensemble li { justify-content: space-between; }
 .contenu-ensemble .qte { flex: none; font-family: var(--din); font-size: var(--t-14); white-space: nowrap; }
 .contenu-ensemble li.ajoute .qte b { color: #fff; background: var(--neutre); border-radius: 4px; padding: 0 5px; }
@@ -534,6 +543,7 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .alerte.attention { background: var(--attention-clair); color: #5f4100; border-color: #f3e2ad; }
 .alerte .point { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .alerte button { margin-left: auto; }
+table.totaux tr.total td { background: var(--surface-2); border-top: 2px solid var(--trait-fort); }
 .apercu { max-height: 460px; overflow: auto; border: 1px solid var(--trait); border-radius: var(--r); }
 .apercu table { width: 100%; border-collapse: collapse; font-size: var(--t-12); }
 .apercu th { position: sticky; top: 0; background: var(--surface-2); text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--trait); font-weight: 600; }

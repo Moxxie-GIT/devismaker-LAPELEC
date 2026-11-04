@@ -1,12 +1,13 @@
 // Moteur de calcul du lot CFO : devis saisi -> lignes d'import Esabora + calculs tableaux / domotique.
 import type {
-  Alerte, DevisData, LigneImport, Parametres, Piece, Protection, Resultat, TableauCalcule,
+  Alerte, DevisData, GroupeTableau, LigneImport, Parametres, Piece, Protection, Resultat, TableauCalcule,
 } from '../../types';
 import {
   ALIM_TD, CATALOGUE, MODULES_PROTECTION, NOTE_ML, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX,
   PROTECTION_TRI, placesCoffret, type ModeleTableau,
 } from './catalogue';
 import { TYPES_PIECES } from './pieces';
+import { disposer } from './disposition';
 
 const MODULES_CANAL: Record<string, string> = { v110: 'SM4', v230: 'DM4T', dali: 'DALI', jm: 'JM4T' };
 const RESERVES = ['domotique', 'divers'];
@@ -105,6 +106,64 @@ function repartir(departs: Depart[], chargeTri: number): Record<Phase, number> {
     d.phase = p; charge[p] += d.kw;
   }
   return charge;
+}
+
+/**
+ * Range les disjoncteurs sous les interrupteurs différentiels, comme on les pose dans le tableau :
+ *  - 8 circuits au plus par interrupteur différentiel (les disjoncteurs en réserve comptent : ils serviront) ;
+ *  - les circuits qui l'exigent (plaque, lave-linge…) sous un ID type A ;
+ *  - l'éclairage d'abord, réparti sur plusieurs ID pour qu'un déclenchement ne plonge pas tout dans le noir,
+ *    puis les prises, puis le reste du plus chargé au moins chargé, toujours sous l'ID le moins rempli ;
+ *  - en tétra, un ID ne protège que des circuits de sa phase.
+ * Les appareils qui ont leur propre différentiel (départs 300 mA vers les TD, disjoncteurs différentiels 4P)
+ * forment un groupe à part.
+ */
+function grouper(
+  protections: Protection[], liste: Depart[], departs: Record<string, string[][]>, tetra: boolean, avert: (m: string) => void,
+): GroupeTableau[] {
+  const p = (k: string) => protections.find((x) => x.cle === k);
+  interface Id { cle: string; i: number; typeA: boolean; phase?: string; membres: { cle: string; i: number }[] }
+  const ids: Id[] = [];
+  for (const k of ['IDA', 'IDAC']) {
+    for (let i = 0; i < (p(k)?.final ?? 0); i++) {
+      const phase = tetra ? /L[123]$/.exec(departs[k]?.[i]?.[0] ?? '')?.[0] : undefined;
+      ids.push({ cle: k, i, typeA: k === 'IDA', phase, membres: [] });
+    }
+  }
+  const rang = (d: Depart) => (d.fonctions[0].startsWith('Éclairage') ? 0 : d.fonctions[0].startsWith('Prises') ? 1 : 2);
+  const circuits = ['C10', 'C16', 'C20', 'C32']
+    .flatMap((k) => liste.filter((d) => d.cle === k).map((d, i) => ({ cle: k, i, d })))
+    .sort((a, b) => Number(b.d.typeA) - Number(a.d.typeA) || rang(a.d) - rang(b.d) || b.d.kw - a.d.kw);
+  const sansId: { cle: string; i: number }[] = [];
+  const poser = (x: { cle: string; i: number }, candidats: Id[]) => {
+    const libres = candidats.filter((id) => id.membres.length < 8);
+    if (!libres.length) return false;
+    libres.reduce((m, id) => (id.membres.length < m.membres.length ? id : m)).membres.push(x);
+    return true;
+  };
+  for (const c of circuits) {
+    const ok = (id: Id) => (!c.d.typeA || id.typeA) && (!tetra || id.phase === c.d.phase);
+    if (!poser({ cle: c.cle, i: c.i }, ids.filter(ok))) sansId.push({ cle: c.cle, i: c.i });
+  }
+  if (sansId.length) avert(`${sansId.length} circuit(s) sans interrupteur différentiel disponible : vérifier la disposition.`);
+  // disjoncteurs facturés en réserve : sous un ID qui a encore de la place, sinon à part
+  const reserve: { cle: string; i: number }[] = [];
+  for (const k of ['C10', 'C16', 'C20', 'C32']) {
+    const pr = p(k);
+    for (let i = pr?.besoin ?? 0; i < (pr?.final ?? 0); i++) if (!poser({ cle: k, i }, ids)) reserve.push({ cle: k, i });
+  }
+
+  const groupes: GroupeTableau[] = [];
+  const propres = ['D32', 'D40', ...ORDRE_PROTECTIONS.filter((k) => k.startsWith('DD4'))]
+    .flatMap((k) => Array.from({ length: p(k)?.final ?? 0 }, (_, i) => ({ cle: k, i })));
+  if (propres.length) groupes.push({ libelle: 'Départs et appareils à différentiel intégré', membres: propres });
+  const ordreId = (id: Id) => (tetra ? (id.phase ? Number(id.phase[1]) : 9) * 10 : 0) + (id.typeA ? 0 : 1);
+  [...ids].sort((a, b) => ordreId(a) - ordreId(b)).forEach((id, n) => {
+    const nom = `Différentiel ${n + 1}${id.phase ? ` (${id.phase})` : ''}`;
+    groupes.push({ libelle: nom, tete: { cle: id.cle, i: id.i }, membres: id.membres });
+  });
+  if (reserve.length || sansId.length) groupes.push({ libelle: 'Réserve', membres: [...sansId, ...reserve] });
+  return groupes;
 }
 
 interface TableauInterne {
@@ -343,6 +402,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
     const departs: Record<string, string[][]> = {};
     let nbCircuits = 0;
     let phases: Record<Phase, number> | undefined;
+    let groupes: GroupeTableau[] | undefined;
     const base = (k: string) => t.modele.base[k]?.q ?? 0;
     if (t.modele.calculable) {
       const tetra = t.phase === 'tetra';
@@ -425,13 +485,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       const ch = protections.filter((x) => x.final !== x.base);
       if (ch.length) aModifier.push({ bloc: t.bloc, tableau: t.nom, ensemble: t.modele.code, changements: ch });
 
-      // le contenu final doit tenir sur les rails du coffret de l'ensemble
-      const places = placesCoffret(t.modele);
-      const occupes = (t.modele.fixes ?? []).reduce((a, f) => a + f.modules, 0)
-        + protections.reduce((a, x) => a + x.final * (MODULES_PROTECTION[x.cle] ?? 1), 0);
-      if (places && occupes > places) {
-        att(`${t.nom} : ${occupes} modules pour ${places} places dans le coffret (${t.modele.coffret!.nom}). Prévoir un coffret plus grand dans Esabora.`, t.pieceId);
-      }
+      groupes = grouper(protections, liste, departs, tetra, (m) => att(`${t.nom} : ${m}`, t.pieceId));
     } else {
       att(`${t.nom} est en tétra : le calcul des disjoncteurs n’est pas géré, à faire dans Esabora.`, t.pieceId);
       // on montre quand même le contenu de l'ensemble tel qu'il est facturé (rien n'est recalculé)
@@ -440,12 +494,28 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         if (bq) protections.push({ cle: k, label: PROTECTIONS[k].label, ref: t.modele.base[k]?.ref ?? PROTECTIONS[k].ref, besoin: bq, base: bq, final: bq });
       }
     }
-    resTableaux.push({
+    const tc: TableauCalcule = {
       id: t.id, nom: t.nom, bloc: t.bloc, ensemble: t.modele.code, modele: t.modeleCle, pieceId: t.pieceId, calculable: t.modele.calculable,
       points: t.points, socles: t.socles, appareilsVr: t.vr, circuitsA: t.nA, circuits: nbCircuits,
       protections, rattachees: t.rattachees, detail: t.detail, canaux: t.canaux, modules: modulesParTableau.get(t.id) ?? {},
-      departs, phases,
-    });
+      departs, phases, groupes,
+    };
+    resTableaux.push(tc);
+
+    // la disposition (une suite « ID + ses disjoncteurs » par rail, jamais coupée) doit tenir dans le coffret,
+    // avec au moins 20 % d'emplacements libres (réserve de la NF C 15-100)
+    const cof = t.modele.coffret;
+    if (t.modele.calculable && cof) {
+      const d = disposer(tc);
+      const places = d.capacite ?? 0;
+      const conseil = 'Prévoir un coffret plus grand dans Esabora.';
+      if (d.utilises > places) att(`${t.nom} : ${d.utilises} modules pour ${places} places dans le coffret (${cof.nom}). ${conseil}`, t.pieceId);
+      else if (d.rangeesUtiles > cof.rangees) {
+        att(`${t.nom} : rangé par interrupteur différentiel, il faut ${d.rangeesUtiles} rangées et le coffret (${cof.nom}) n’en a que ${cof.rangees}. ${conseil}`, t.pieceId);
+      } else if (places - d.utilises < 0.2 * places) {
+        att(`${t.nom} : ${places - d.utilises} emplacements libres sur ${places}, moins que les 20 % de réserve demandés par la NF C 15-100. ${conseil}`, t.pieceId);
+      }
+    }
   }
 
 

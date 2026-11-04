@@ -1,6 +1,8 @@
 // Construction du fichier d'import Esabora à partir du résultat du moteur.
 import type { Devis, Resultat } from '../shared/types';
 import { S, ecrireXlsx, type Cellule, type Feuille } from './xlsx';
+import { totauxParBloc } from '../shared/totaux';
+import { LIBELLE_ETAT, disposer } from '../shared/lots/cfo/disposition';
 
 const COLONNES = ['N°', 'Référence', 'Désignation', 'Quantité', 'Prix unitaire', 'Coef Mat.', 'Coef M.O.', 'M.O. Unit.', 'Taux M.O.', 'Unité'];
 
@@ -72,9 +74,53 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     for (const i of r.domotique.parInter) det.push([c(i.piece), c(`Inter ${i.inter}`), c(i.boutons), c(i.modules)]);
   }
 
+  // 4. TOTAUX par bloc
+  const { blocs, general } = totauxParBloc(r.lignes);
+  const eur = (n: number | null) => (n == null ? c('dans Esabora', S.ITALIQUE) : c(n));
+  const tot: Cellule[][] = [
+    [c('Totaux par bloc (ne pas importer cette feuille)', S.TITRE)],
+    [c('Domotique et Divers : chiffrés avec les prix de l’outil, ceux qui partent dans le fichier d’import.', S.ITALIQUE)],
+    [c('Pièces : faites d’ensembles Esabora, dont les prix sont dans Esabora. Leur montant apparaît après l’import ; ici, le nombre de lignes, d’articles et les heures de pose ajoutées.', S.ITALIQUE)],
+    [],
+    ['Bloc', 'Lignes', 'Articles', 'Heures de pose', 'Matériel (€ HT)', 'Main d’œuvre (€ HT)', 'Total (€ HT)'].map((h) => c(h, S.TH)),
+  ];
+  for (const t of blocs) tot.push([c(t.bloc, S.TEXTE), c(t.lignes), c(t.articles), c(t.heures), eur(t.materiel), eur(t.mainOeuvre), eur(t.total)]);
+  tot.push([
+    c('Total des blocs', S.SOUS_TITRE), c(general.lignes, S.SOUS_TITRE), c(general.articles, S.SOUS_TITRE), c(general.heures, S.SOUS_TITRE),
+    c(general.materiel, S.SURLIGNE), c(general.mainOeuvre, S.SURLIGNE), c(general.total, S.SURLIGNE),
+  ]);
+  if (general.total != null) tot.push([c('(montants : blocs chiffrés par l’outil seulement)', S.ITALIQUE)]);
+
+  // 5. DISPOSITION des tableaux, rangée par rangée (pour le montage et l'étiquetage)
+  const dis: Cellule[][] = [
+    [c('Disposition des tableaux (ne pas importer cette feuille)', S.TITRE)],
+    [c('Chaque interrupteur différentiel est suivi des disjoncteurs qu’il protège (8 au plus), sur le même rail.', S.ITALIQUE)],
+  ];
+  for (const t of r.tableaux) {
+    const d = disposer(t);
+    if (!d.mods.length) continue;
+    dis.push([], [c(`${t.nom}  (${t.ensemble}, bloc « ${t.bloc} »)${d.coffret ? `  :  ${d.coffret.nom}, ${d.coffret.rangees} × ${d.coffret.parRangee} modules` : ''}`, S.SOUS_TITRE)]);
+    dis.push(['Rangée', 'Modules', 'Appareil', 'Référence', 'Protégé par', 'Étiquette', 'État'].map((h) => c(h, S.TH)));
+    d.rangees.slice(0, d.rangeesUtiles).forEach((rg, n) => {
+      let pos = 1;
+      for (const m of rg) {
+        if (m.etat !== 'libre') {
+          const etiquette = m.fonctions?.join(' / ') ?? (m.etat === 'inutile' ? 'Réserve' : '');
+          dis.push([
+            c(n + 1), c(m.largeur > 1 ? `${pos} à ${pos + m.largeur - 1}` : String(pos), S.TEXTE), c(m.nom || m.rep.replace('\n', ' ')),
+            c(m.ref ?? '', S.TEXTE), c(m.groupe ?? ''), c(etiquette), c(LIBELLE_ETAT[m.etat]),
+          ]);
+        }
+        pos += m.largeur;
+      }
+    });
+  }
+
   return [
     { nom: 'IMPORT', largeurs: [16, 13, 70, 9, 12, 9, 9, 10, 9, 7], lignes: imp, figerEntete: true },
     { nom: 'TABLEAUX À MODIFIER', largeurs: [62, 13, 30, 17], lignes: mod },
+    { nom: 'TOTAUX', largeurs: [28, 9, 10, 15, 17, 20, 15], lignes: tot },
+    { nom: 'DISPOSITION', largeurs: [9, 10, 48, 13, 22, 52, 26], lignes: dis },
     { nom: 'DÉTAIL CALCUL', largeurs: [52, 14, 20, 16, 22, 22, 40], lignes: det },
   ];
 }

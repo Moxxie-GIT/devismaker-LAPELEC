@@ -3,6 +3,39 @@ import type { Devis, Resultat } from '../../../shared/types';
 import { telecharger } from '../../lib/api';
 import { toast } from '../../lib/ui';
 import { Icone } from '../../lib/icones';
+import { totauxParBloc } from '../../../shared/totaux';
+
+const euros = (n: number | null) => (n == null ? null : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }));
+
+/** Totaux par bloc : les mêmes que la feuille TOTAUX du fichier. */
+function TotauxBlocs({ resultat }: { resultat: Resultat }) {
+  const { blocs, general } = totauxParBloc(resultat.lignes);
+  if (!blocs.length) return null;
+  return (
+    <section className="section">
+      <header><h2>Totaux par bloc</h2><p>Les pièces sont faites d’ensembles Esabora : leur montant apparaît dans Esabora après l’import.</p></header>
+      <table className="liste bloc totaux">
+        <thead><tr><th>Bloc</th><th className="num">Lignes</th><th className="num">Heures de pose</th><th className="num">Matériel</th><th className="num">Main d’œuvre</th><th className="num">Total HT</th></tr></thead>
+        <tbody>
+          {blocs.map((t) => (
+            <tr key={t.bloc}>
+              <td>{t.bloc}</td><td className="num">{t.lignes}</td><td className="num">{t.heures ? `${t.heures.toLocaleString('fr-FR')} h` : '—'}</td>
+              {t.total == null
+                ? <td colSpan={3} className="num discret petit">dans Esabora</td>
+                : <><td className="num">{euros(t.materiel)}</td><td className="num">{euros(t.mainOeuvre)}</td><td className="num"><b>{euros(t.total)}</b></td></>}
+            </tr>
+          ))}
+          <tr className="total">
+            <td><b>Total</b></td><td className="num"><b>{general.lignes}</b></td><td className="num"><b>{general.heures.toLocaleString('fr-FR')} h</b></td>
+            <td className="num">{euros(general.materiel) ?? '—'}</td><td className="num">{euros(general.mainOeuvre) ?? '—'}</td>
+            <td className="num"><b>{euros(general.total) ?? '—'}</b></td>
+          </tr>
+        </tbody>
+      </table>
+      {general.total != null && <p className="petit discret" style={{ marginTop: 6 }}>Montants : blocs chiffrés par l’outil seulement (Domotique, Divers).</p>}
+    </section>
+  );
+}
 
 export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauvegarde }: {
   devis: Devis; resultat: Resultat; onAller: (s: string) => void; avantExport: () => Promise<void>; etatSauvegarde: string;
@@ -83,6 +116,8 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
           </li>
         </ol>
       </section>
+
+      <TotauxBlocs resultat={resultat} />
 
       <section className="section">
         <details>

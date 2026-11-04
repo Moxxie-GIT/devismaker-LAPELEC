@@ -357,7 +357,8 @@ class Vue {
       const fonctions = (m.fonctions ?? (m.etat === 'inutile' ? ['Réserve'] : [])).map((f) => {
         const s = document.createElement('strong'); s.className = 'fonction'; s.textContent = f; return s;
       });
-      const nom = document.createElement('span'); nom.textContent = m.nom && m.nom !== m.rep ? m.nom : '';
+      const nom = document.createElement('span');
+      nom.textContent = [m.nom && m.nom !== m.rep ? m.nom : '', m.groupe ? `Protégé par ${m.groupe}` : ''].filter(Boolean).join(' · ');
       const etat = document.createElement('em'); etat.textContent = LIBELLE_ETAT[m.etat]; etat.className = `etat-${m.etat || 'inclus'}`;
       this.bulle.append(b, ...fonctions, nom, etat);
       this.bulle.hidden = false;
