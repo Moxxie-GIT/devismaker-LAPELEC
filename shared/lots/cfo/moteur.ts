@@ -4,7 +4,7 @@ import type {
 } from '../../types';
 import {
   ALIM_TD, CATALOGUE, MODULES_PROTECTION, NOTE_ML, HEURES_POSE, ORDRE_DOMOTIQUE, ORDRE_PROTECTIONS, PROTECTIONS, TABLEAUX,
-  PROTECTION_TRI, placesCoffret, type ModeleTableau,
+  KNX_TGBT, PROTECTION_TRI, placesCoffret, type ModeleTableau,
 } from './catalogue';
 import { TYPES_PIECES } from './pieces';
 import { disposer } from './disposition';
@@ -370,6 +370,12 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       }
     }
     domotique = { modules: total, participants, parInter };
+    // alimentation(s), horloge et interfaces se posent au TGBT (à côté des actionneurs qu'il alimente lui-même)
+    if (tg) {
+      const m = modulesParTableau.get('TGBT') ?? {};
+      for (const k of KNX_TGBT) if (total[k]) m[k] = (m[k] ?? 0) + total[k];
+      modulesParTableau.set('TGBT', m);
+    }
     if (data.domotique.heuresEts == null) err('Domotique : indique le nombre d’heures de programmation ETS.');
   }
 
@@ -506,15 +512,31 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
     // avec au moins 20 % d'emplacements libres (réserve de la NF C 15-100)
     const cof = t.modele.coffret;
     if (t.modele.calculable && cof) {
-      const d = disposer(tc);
-      const places = d.capacite ?? 0;
-      const conseil = 'Prévoir un coffret plus grand dans Esabora.';
-      if (d.utilises > places) att(`${t.nom} : ${d.utilises} modules pour ${places} places dans le coffret (${cof.nom}). ${conseil}`, t.pieceId);
-      else if (d.rangeesUtiles > cof.rangees) {
-        att(`${t.nom} : rangé par interrupteur différentiel, il faut ${d.rangeesUtiles} rangées et le coffret (${cof.nom}) n’en a que ${cof.rangees}. ${conseil}`, t.pieceId);
-      } else if (places - d.utilises < 0.2 * places) {
-        att(`${t.nom} : ${places - d.utilises} emplacements libres sur ${places}, moins que les 20 % de réserve demandés par la NF C 15-100. ${conseil}`, t.pieceId);
+      const probleme = (d: ReturnType<typeof disposer>) => {
+        const places = d.capacite ?? 0;
+        if (d.utilises > places) return `${d.utilises} modules pour ${places} places`;
+        if (d.rangeesUtiles > cof.rangees * d.coffrets) return `rangé par interrupteur différentiel, il faut ${d.rangeesUtiles} rangées pour ${cof.rangees * d.coffrets}`;
+        if (places - d.utilises < 0.2 * places) return `${places - d.utilises} emplacements libres sur ${places}, moins que les 20 % de réserve demandés par la NF C 15-100`;
+        return '';
+      };
+      let d = disposer(tc);
+      let pb = probleme(d);
+      if (pb && t.id !== 'TGBT') {
+        // TD plein : on en pose un deuxième identique à côté (ou en dessous), alimenté par le premier ;
+        // la disposition continue dedans, et les modules KNX y passent s'ils ne tiennent plus dans le premier
+        tc.coffrets = 2;
+        d = disposer(tc);
+        const ajouts = (t.modele.contenu ?? []).filter((l) => l.ref && /^(COFFRET|PORTE|PEIGNE VERTICAL)/i.test(l.nom));
+        if (ajouts.length) {
+          const lignes = ajouts.map((l) => ({ cle: `EXT ${l.ref}`, label: `${l.nom} (2e coffret)`, ref: l.ref!, besoin: l.q * 2, base: l.q, final: l.q * 2 }));
+          const m = aModifier.find((a) => a.tableau === t.nom);
+          if (m) m.changements.push(...lignes);
+          else aModifier.push({ bloc: t.bloc, tableau: t.nom, ensemble: t.modele.code, changements: lignes });
+        }
+        att(`${t.nom} : le coffret est plein (${pb}). Deuxième coffret ${cof.nom} à poser à côté, alimenté par le premier : à ajouter dans l’ensemble (voir les tableaux à modifier).`, t.pieceId);
+        pb = probleme(d);
       }
+      if (pb) att(`${t.nom} : ${pb} dans ${d.coffrets > 1 ? 'les deux coffrets' : `le coffret (${cof.nom})`}. Prévoir un coffret plus grand dans Esabora.`, t.pieceId);
     }
   }
 

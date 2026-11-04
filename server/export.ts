@@ -99,7 +99,9 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
   for (const t of r.tableaux) {
     const d = disposer(t);
     if (!d.mods.length) continue;
-    dis.push([], [c(`${t.nom}  (${t.ensemble}, bloc « ${t.bloc} »)${d.coffret ? `  :  ${d.coffret.nom}, ${d.coffret.rangees} × ${d.coffret.parRangee} modules` : ''}`, S.SOUS_TITRE)]);
+    const coffrets = d.coffrets > 1 ? `${d.coffrets} coffrets ` : '';
+    dis.push([], [c(`${t.nom}  (${t.ensemble}, bloc « ${t.bloc} »)${d.coffret ? `  :  ${coffrets}${d.coffret.nom}, ${d.coffret.rangees} × ${d.coffret.parRangee} modules` : ''}`, S.SOUS_TITRE)]);
+    if (d.coffrets > 1) dis.push([c('Tableau plein : le coffret 2, identique, est posé à côté du coffret 1 et alimenté par lui.', S.ITALIQUE)]);
     dis.push(['Rangée', 'Modules', 'Appareil', 'Référence', 'Protégé par', 'Étiquette', 'État'].map((h) => c(h, S.TH)));
     d.rangees.slice(0, d.rangeesUtiles).forEach((rg, n) => {
       let pos = 1;
@@ -107,7 +109,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
         if (m.etat !== 'libre') {
           const etiquette = m.fonctions?.join(' / ') ?? (m.etat === 'inutile' ? 'Réserve' : '');
           dis.push([
-            c(n + 1), c(m.largeur > 1 ? `${pos} à ${pos + m.largeur - 1}` : String(pos), S.TEXTE), c(m.nom || m.rep.replace('\n', ' ')),
+            c(d.coffrets > 1 && d.coffret ? `C${d.coffretDe(n) + 1} · ${(n % d.coffret.rangees) + 1}` : n + 1, S.TEXTE), c(m.largeur > 1 ? `${pos} à ${pos + m.largeur - 1}` : String(pos), S.TEXTE), c(m.nom || m.rep.replace('\n', ' ')),
             c(m.ref ?? '', S.TEXTE), c(m.groupe ?? ''), c(etiquette), c(LIBELLE_ETAT[m.etat]),
           ]);
         }

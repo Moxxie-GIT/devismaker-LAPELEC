@@ -3,7 +3,7 @@
 // moteur dans « groupes ») ; un groupe ne se coupe jamais entre deux rangées ; les appareils fixes de tête
 // (interrupteur-sectionneur, répartiteur…) ouvrent la première rangée, les borniers ferment le tableau.
 import type { TableauCalcule } from '../../types';
-import { MODULES_PROTECTION, TABLEAUX, placesCoffret, type AppareilFixe } from './catalogue';
+import { MODULES_KNX, MODULES_PROTECTION, ORDRE_KNX, TABLEAUX, placesCoffret, type AppareilFixe } from './catalogue';
 
 /** Largeur de rangée quand l'ensemble n'a pas de coffret connu. */
 export const PAR_RANGEE_DEFAUT = 13;
@@ -18,7 +18,7 @@ const ORDRE = [
   'C10', 'C16', 'C20', 'C32',
 ];
 
-export type EtatModule = '' | 'ajoute' | 'inutile' | 'fixe' | 'libre';
+export type EtatModule = '' | 'ajoute' | 'inutile' | 'fixe' | 'libre' | 'knx';
 export interface Mod {
   cle: string; rep: string; nom: string; ref?: string; largeur: number; etat: EtatModule;
   /** Pour les appareils fixes : interrupteur-sectionneur, télérupteur, répartiteur… */
@@ -27,6 +27,8 @@ export interface Mod {
   fonctions?: string[];
   /** Interrupteur différentiel qui protège ce disjoncteur (« Différentiel 2 »). */
   groupe?: string;
+  /** Module KNX : sa clé (RM8, ALIM…). */
+  knx?: string;
 }
 
 export const LIBELLE_ETAT: Record<EtatModule, string> = {
@@ -35,7 +37,27 @@ export const LIBELLE_ETAT: Record<EtatModule, string> = {
   inutile: 'Facturé, non utilisé',
   fixe: 'Appareil fixe de l’ensemble',
   libre: 'Emplacement libre',
+  knx: 'Module KNX (facturé dans le bloc Domotique)',
 };
+
+/** Modules KNX du tableau, avec le nombre de sorties utilisées sur chacun (remplis dans l'ordre, les plus gros d'abord). */
+function modulesKnx(t: TableauCalcule): Mod[] {
+  const out: Mod[] = [];
+  const reste: Record<string, number> = { ...t.canaux };
+  for (const k of ORDRE_KNX) {
+    const def = MODULES_KNX[k];
+    for (let i = 0; i < (t.modules?.[k] ?? 0); i++) {
+      let fonctions: string[] | undefined;
+      if (def.sorties && def.canal) {
+        const pris = Math.min(def.sorties, reste[def.canal] ?? 0);
+        reste[def.canal] = (reste[def.canal] ?? 0) - pris;
+        fonctions = [`${pris} / ${def.sorties} sorties`];
+      }
+      out.push({ cle: 'knx', rep: def.label, nom: def.nom, largeur: def.modules, etat: 'knx', fonctions, knx: k });
+    }
+  }
+  return out;
+}
 
 const fixe = (f: AppareilFixe): Mod => ({ cle: 'fixe', type: f.type, rep: f.label, nom: f.nom, ref: f.ref, largeur: f.modules, etat: 'fixe' });
 
@@ -70,9 +92,16 @@ function blocs(t: TableauCalcule): Mod[][] {
       for (let i = 0; i < (p?.final ?? 0); i++) out.push([appareil(t, k, i)]);
     }
   }
+  // modules KNX : sur leurs propres rangées (ils ne se branchent pas sur les peignes des différentiels)
+  const knx = modulesKnx(t).map((x) => [x]);
+  if (knx.length) NOUVELLE_RANGEE.add(knx[0]);
+  out.push(...knx);
   out.push(...(m?.fixes ?? []).filter((f) => f.fin).map((f) => [fixe(f)]));
   return out;
 }
+
+/** Suites qui doivent ouvrir une nouvelle rangée. */
+const NOUVELLE_RANGEE = new WeakSet<Mod[]>();
 
 export function disposer(t: TableauCalcule) {
   const m = TABLEAUX[t.modele];
@@ -84,13 +113,26 @@ export function disposer(t: TableauCalcule) {
   // Un peigne horizontal (13 appareils) alimente une rangée depuis son interrupteur différentiel : un seul ID par
   // rangée dans les coffrets de 13 ou 18 modules, deux dans les rangées de 24 (deux peignes).
   const maxIdParRangee = parRangee >= 24 ? 2 : 1;
+  const coffrets = coffret ? Math.max(1, t.coffrets ?? 1) : 1;
   const rangees: Mod[][] = [];
   let cur: Mod[] = []; let n = 0; let ids = 0;
   const nouvelle = () => { if (cur.length) rangees.push(cur); cur = []; n = 0; ids = 0; };
-  for (const suite of blocs(t)) {
+  const suites = blocs(t);
+  for (const [s, suite] of suites.entries()) {
     const w = suite.reduce((a, x) => a + x.largeur, 0);
     const avecId = suite[0]?.cle.startsWith('ID');
-    if (n + w > parRangee || (avecId && ids >= maxIdParRangee)) nouvelle();
+    if (NOUVELLE_RANGEE.has(suite) && coffret && coffrets > 1) {
+      // deux coffrets : les modules KNX restent ensemble ; s'ils ne tiennent pas dans ce qu'il reste du coffret en
+      // cours, ils passent tous dans le suivant
+      nouvelle();
+      const knx = suites.slice(s).filter((x) => x[0].etat === 'knx').flat();
+      let lignesKnx = 1, l = 0;
+      for (const x of knx) { if (l + x.largeur > parRangee) { lignesKnx++; l = 0; } l += x.largeur; }
+      const R = coffret.rangees;
+      const restantes = R - (rangees.length % R || (rangees.length ? R : 0));
+      if (lignesKnx > restantes && Math.floor(rangees.length / R) + 1 < coffrets) while (rangees.length % R) rangees.push([]);
+    }
+    if (n + w > parRangee || (avecId && ids >= maxIdParRangee) || NOUVELLE_RANGEE.has(suite)) nouvelle();
     if (avecId) ids++;
     for (const x of suite) {
       if (n + x.largeur > parRangee) nouvelle();      // suite plus large qu'une rangée : seul cas où l'on coupe
@@ -100,7 +142,7 @@ export function disposer(t: TableauCalcule) {
   nouvelle();
   const rangeesUtiles = rangees.length;
   if (coffret) {
-    while (rangees.length < coffret.rangees) rangees.push([]);
+    while (rangees.length < coffret.rangees * coffrets) rangees.push([]);
     for (const r of rangees) {
       let l = r.reduce((a, x) => a + x.largeur, 0);
       while (l < parRangee) { r.push({ cle: 'libre', rep: '', nom: '', largeur: 1, etat: 'libre' }); l++; }
@@ -108,8 +150,11 @@ export function disposer(t: TableauCalcule) {
   }
   const mods = rangees.flat().filter((x) => x.etat !== 'libre');
   const utilises = mods.reduce((a, x) => a + x.largeur, 0);
+  const capacite = places ? places * coffrets : undefined;
   return {
-    mods, rangees, rangeesUtiles, utilises, parRangee, coffret,
-    capacite: places, pct: places ? Math.round((utilises / places) * 100) : 0,
+    mods, rangees, rangeesUtiles, utilises, parRangee, coffret, coffrets,
+    /** Coffret (0 = premier) d'une rangée. */
+    coffretDe: (i: number) => (coffret ? Math.floor(i / coffret.rangees) : 0),
+    capacite, pct: capacite ? Math.round((utilises / capacite) * 100) : 0,
   };
 }

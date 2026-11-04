@@ -11,16 +11,17 @@ import type { Mod } from '../../lib/coffret';
 
 export interface Cotes { W: number; FENETRE: number; Z_FACE: number; Z_FOND: number }
 
-type Genre = 'dnx' | 'id' | 'diff' | 'is' | 'tl' | 'horloge' | 'transfo' | 'repartiteur' | 'bornier';
+type Genre = 'dnx' | 'id' | 'diff' | 'is' | 'tl' | 'horloge' | 'transfo' | 'repartiteur' | 'bornier' | 'knx';
 
 function genre(m: Mod): Genre {
   if (m.cle === 'IDAC' || m.cle === 'IDA') return 'id';
   if (m.cle === 'D32' || m.cle === 'D40' || m.cle.startsWith('DD4')) return 'diff';
+  if (m.etat === 'knx') return 'knx';
   if (m.etat === 'fixe') return m.type ?? 'is';
   return 'dnx';
 }
 
-const TEINTE = { inclus: 0xf8f8f5, ajoute: 0xdbe7f8, inutile: 0xd2d7d6, fixe: 0xf2f2ed, repartiteur: 0xdfe3e2, bornier: 0x8c9397 };
+const TEINTE = { inclus: 0xf8f8f5, ajoute: 0xdbe7f8, inutile: 0xd2d7d6, fixe: 0xf2f2ed, repartiteur: 0xdfe3e2, bornier: 0x8c9397, knx: 0xe6eae8 };
 /** Couleurs des pôles sur les répartiteurs : N bleu, L1 marron, L2 noir, L3 gris. */
 const POLES = ['#2f6fb5', '#7a4a2a', '#22272b', '#8f979b'];
 const MANETTE = 0x3a4046;      // anthracite
@@ -126,7 +127,7 @@ export class Atelier {
 
   private marquage(m: Mod, type: Genre, fw: number, fh: number, w: number): CanvasTexture {
     const ajoute = m.etat === 'ajoute', ferme = m.etat !== 'inutile';
-    const cle = `${type}|${m.cle}|${m.rep}|${m.ref ?? ''}|${fw.toFixed(2)}|${ajoute}|${ferme}`;
+    const cle = `${type}|${m.cle}|${m.knx ?? ''}|${m.rep}|${m.ref ?? ''}|${fw.toFixed(2)}|${ajoute}|${ferme}`;
     let t = this.textures.get(cle);
     if (t) return t;
     const f = new Face(fw, fh);
@@ -229,6 +230,53 @@ export class Atelier {
         }
       }
       if (ref) f.texte(ref, fw / 2 - 0.12, -haut + 0.2, 0.15, { couleur: gris, din: true, align: 'right' });
+    } else if (type === 'knx') {
+      // module KNX sur rail : voyants et boutons de commande manuelle par sortie, borne de bus, bouton de programmation
+      const g = f.g;
+      const k = m.knx ?? '';
+      f.texte('KNX', -fw / 2 + 0.14, haut - 0.26, 0.26, { gras: true, couleur: '#3f8a4a', align: 'left' });
+      f.texte(m.rep, fw / 2 - 0.12, haut - 0.26, 0.24, { gras: true, din: true, couleur: '#1b2328', align: 'right' });
+      const sorties = /^RM16/.test(k) ? 16 : /^(RM|SM|DM|DALI|JM)/.test(k) ? (k === 'RM8' ? 8 : 4) : 0;
+      if (sorties) {
+        const parLigne = Math.min(8, sorties), lignes = Math.ceil(sorties / parLigne);
+        const pas = (fw - 0.4) / parLigne;
+        for (let l = 0; l < lignes; l++) {
+          for (let i = 0; i < parLigne; i++) {
+            const x = -fw / 2 + 0.2 + pas * (i + 0.5), y = haut - 0.85 - l * 0.95;
+            g.fillStyle = '#c9ced0'; g.beginPath(); g.roundRect(f.X(x - 0.14), f.Y(y + 0.14), 0.28 * K, 0.28 * K, 0.05 * K); g.fill();
+            g.fillStyle = i % 3 === 0 ? '#e8a33a' : '#7c8488'; g.beginPath(); g.arc(f.X(x), f.Y(y - 0.32), 0.06 * K, 0, Math.PI * 2); g.fill();
+            f.texte(String(l * parLigne + i + 1), x, y - 0.55, 0.13, { couleur: '#5d666c' });
+          }
+        }
+      } else if (k === 'HORL') {
+        g.fillStyle = '#7f9a86'; g.beginPath(); g.roundRect(f.X(-fw / 2 + 0.25), f.Y(haut - 0.55), (fw - 0.5) * K, 1.1 * K, 0.08 * K); g.fill();
+        f.texte('12:00', 0, haut - 1.1, 0.42, { gras: true, din: true, couleur: '#22302a' });
+        for (const [i, s] of ['◄', 'OK', '►', 'Menu'].entries()) {
+          const x = -fw / 2 + 0.45 + i * ((fw - 0.9) / 3);
+          g.fillStyle = '#c9ced0'; g.beginPath(); g.arc(f.X(x), f.Y(-0.35), 0.16 * K, 0, Math.PI * 2); g.fill();
+          f.texte(s, x, -0.7, 0.13, { gras: true, couleur: '#3d464c' });
+        }
+      } else if (k === 'IP' || k === 'USB') {
+        // prise réseau ou USB
+        g.fillStyle = '#2a3035';
+        if (k === 'IP') g.fillRect(f.X(-0.42), f.Y(0.35), 0.84 * K, 0.7 * K);
+        else { g.beginPath(); g.roundRect(f.X(-0.3), f.Y(0.25), 0.6 * K, 0.5 * K, 0.08 * K); g.fill(); }
+        if (k === 'IP') { g.fillStyle = '#c9a43a'; for (let i = 0; i < 8; i++) g.fillRect(f.X(-0.32 + i * 0.085), f.Y(0.3), 0.04 * K, 0.18 * K); }
+        f.texte(k === 'IP' ? 'LAN' : 'USB', 0, -0.25, 0.16, { gras: true, couleur: '#3d464c' });
+      } else {
+        // alimentation : voyants de fonctionnement
+        for (const [i, [s, c]] of [['Run', '#4caf50'], ['I>', '#e8b923'], ['Reset', '#c8312b']].entries()) {
+          const y = haut - 0.9 - i * 0.45;
+          g.fillStyle = c; g.beginPath(); g.arc(f.X(-fw / 2 + 0.4), f.Y(y), 0.08 * K, 0, Math.PI * 2); g.fill();
+          f.texte(s, -fw / 2 + 0.6, y, 0.16, { couleur: '#3d464c', align: 'left' });
+        }
+        f.texte('640 mA', 0, -0.55, 0.26, { gras: true, din: true, couleur: '#1b2328' });
+      }
+      // borne de bus KNX (rouge et grise), bouton et voyant de programmation
+      g.fillStyle = '#c8312b'; g.fillRect(f.X(-fw / 2 + 0.18), f.Y(-haut + 0.55), 0.22 * K, 0.36 * K);
+      g.fillStyle = '#3c4246'; g.fillRect(f.X(-fw / 2 + 0.4), f.Y(-haut + 0.55), 0.22 * K, 0.36 * K);
+      g.fillStyle = '#c9ced0'; g.beginPath(); g.arc(f.X(fw / 2 - 0.55), f.Y(-haut + 0.37), 0.13 * K, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#c8312b'; g.beginPath(); g.arc(f.X(fw / 2 - 0.22), f.Y(-haut + 0.37), 0.06 * K, 0, Math.PI * 2); g.fill();
     } else {
       // bornier : blocs de passage à vis, gris, l'un contre l'autre
       const g = f.g;
@@ -259,7 +307,7 @@ export class Atelier {
     const type = genre(m);
     const w = m.largeur * W - 0.07;
     const ferme = m.etat !== 'inutile';
-    const teinte = type === 'repartiteur' ? TEINTE.repartiteur : type === 'bornier' ? TEINTE.bornier
+    const teinte = type === 'repartiteur' ? TEINTE.repartiteur : type === 'bornier' ? TEINTE.bornier : type === 'knx' ? TEINTE.knx
       : m.etat === 'ajoute' ? TEINTE.ajoute : m.etat === 'inutile' ? TEINTE.inutile : m.etat === 'fixe' ? TEINTE.fixe : TEINTE.inclus;
     const g = new Group();
 

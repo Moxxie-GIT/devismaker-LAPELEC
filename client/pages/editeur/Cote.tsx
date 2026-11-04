@@ -40,32 +40,43 @@ export function Vue3D({ t, grand }: { t: TableauCalcule; grand?: boolean }) {
 }
 
 export function SchemaTableau({ t }: { t: TableauCalcule }) {
-  const { rangees, utilises, parRangee } = disposition(t);
+  const { rangees, utilises, parRangee, coffrets, coffretDe } = disposition(t);
+  // un bloc par coffret (TD plein : le deuxième, alimenté par le premier, est posé à côté)
+  const parCoffret = Array.from({ length: coffrets }, (_, c) => rangees.filter((_, i) => coffretDe(i) === c));
   return (
-    <div className={`coffret${parRangee > 18 ? ' serre' : ''}`} role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules`}>
-      {rangees.map((r, i) => (
-        <div className="rangee" key={i} style={{ gridTemplateColumns: `repeat(${parRangee}, minmax(0, 1fr))` }}>
-          {r.map((x, j) => (
-            <div
-              key={j} className={`module${x.largeur > 1 ? ' x2' : ''} ${x.etat}${x.type ? ` ${x.type}` : ''}`}
-              style={x.largeur > 1 ? { gridColumn: `span ${x.largeur}` } : undefined}
-              title={[x.fonctions?.join(' · ') ?? (x.etat === 'inutile' ? 'Réserve' : ''), x.nom || x.rep].filter(Boolean).join('\n')}
-            >
-              <span className="rep">{x.rep}</span>{x.type !== 'bornier' && x.type !== 'repartiteur' && x.type !== 'transfo' && <span className="manette" />}<span />
-            </div>
-          ))}
+    <div className="coffrets" role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules${coffrets > 1 ? `, ${coffrets} coffrets` : ''}`}>
+      {parCoffret.map((lot, c) => (
+        <div key={c}>
+          {coffrets > 1 && <span className="titre-coffret">{c === 0 ? 'Coffret 1' : `Coffret ${c + 1}, alimenté par le coffret 1`}</span>}
+          <div className={`coffret${parRangee > 18 ? ' serre' : ''}`}>
+            {lot.map((r, i) => (
+              <div className="rangee" key={i} style={{ gridTemplateColumns: `repeat(${parRangee}, minmax(0, 1fr))` }}>
+                {r.map((x, j) => (
+                  <div
+                    key={j} className={`module${x.largeur > 1 ? ' x2' : ''} ${x.etat}${x.type ? ` ${x.type}` : ''}`}
+                    style={x.largeur > 1 ? { gridColumn: `span ${x.largeur}` } : undefined}
+                    title={[x.fonctions?.join(' · ') ?? (x.etat === 'inutile' ? 'Réserve' : ''), x.nom || x.rep].filter(Boolean).join('\n')}
+                  >
+                    <span className="rep">{x.rep}</span>{x.type !== 'bornier' && x.type !== 'repartiteur' && x.type !== 'transfo' && x.etat !== 'knx' && <span className="manette" />}<span />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function Legende() {
+function Legende({ t }: { t?: TableauCalcule }) {
+  const knx = t && disposition(t).mods.some((m) => m.etat === 'knx');
   return (
     <div className="legende">
       <span><i />Inclus dans l’ensemble</span>
       <span><i className="ajoute" />À ajouter</span>
       <span><i className="inutile" />Facturé, non utilisé</span>
+      {knx && <span><i className="knx" />Module KNX (bloc Domotique)</span>}
     </div>
   );
 }
@@ -93,7 +104,7 @@ function VueTableau({ t, onAgrandir }: { t: TableauCalcule; onAgrandir: () => vo
       </div>
       {mode === '3d' ? <Vue3D t={t} /> : <SchemaTableau t={t} />}
       {mode === '3d' && <p className="aide-3d">Glisser pour tourner, double-clic pour recentrer. Survole un appareil pour son détail.</p>}
-      <Legende />
+      <Legende t={t} />
       <Remplissage t={t} />
     </div>
   );
@@ -126,22 +137,24 @@ function Phases({ t }: { t: TableauCalcule }) {
 /** « C32\n300mA » → « C32 » */
 const calibre = (m: Mod) => m.rep.split('\n')[0];
 
-/** Les départs du tableau en clair : ce qui est écrit sur l'étiquette de chaque disjoncteur. */
 /** La disposition du tableau en clair, rangée par rangée : chaque différentiel suivi de ses disjoncteurs et de leur étiquette. */
 function ListeDeparts({ t, ouvert = true }: { t: TableauCalcule; ouvert?: boolean }) {
-  const { rangees, rangeesUtiles } = disposition(t);
+  const { rangees, rangeesUtiles, coffrets, coffretDe, coffret } = disposition(t);
   const nbDeparts = rangees.flat().filter((m) => m.fonctions?.length && !m.cle.startsWith('ID')).length;
   if (!nbDeparts) return null;
+  const titre = (n: number) => (coffrets > 1 && coffret ? `Coffret ${coffretDe(n) + 1} · rangée ${(n % coffret.rangees) + 1}` : `Rangée ${n + 1}`);
+  const pleines = rangees.slice(0, rangeesUtiles).map((r, n) => ({ r, n })).filter(({ r }) => r.some((m) => m.etat !== 'libre'));
   return (
     <details className="departs" open={ouvert}>
-      <summary><h3>Disposition et étiquettes</h3><span className="compte">{rangeesUtiles} rangée{rangeesUtiles > 1 ? 's' : ''}</span></summary>
-      {rangees.slice(0, rangeesUtiles).map((r, n) => (
+      <summary><h3>Disposition et étiquettes</h3><span className="compte">{coffrets > 1 ? `${coffrets} coffrets` : `${pleines.length} rangée${pleines.length > 1 ? 's' : ''}`}</span></summary>
+      {coffrets > 1 && <p className="petit discret">Tableau plein : un deuxième coffret identique, posé à côté et alimenté par le premier.</p>}
+      {pleines.map(({ r, n }) => (
         <div key={n} className="rangee-liste">
-          <span className="titre-rangee">Rangée {n + 1}</span>
+          <span className="titre-rangee">{titre(n)}</span>
           <ul>
             {r.filter((m) => m.etat !== 'libre').map((m, i) => {
               const id = m.cle.startsWith('ID');
-              const classe = id ? 'tete-id' : m.etat === 'fixe' ? 'fixe' : m.groupe ? 'sous-id' : '';
+              const classe = id ? 'tete-id' : m.etat === 'fixe' ? 'fixe' : m.etat === 'knx' ? 'knx' : m.groupe ? 'sous-id' : '';
               return (
                 <li key={i} className={`${classe}${m.etat === 'ajoute' ? ' ajoute' : ''}${m.etat === 'inutile' ? ' reserve' : ''}`}>
                   <span className="calibre">{id ? m.rep.replace('\n', ' ') : m.etat === 'fixe' ? m.rep : calibre(m)}</span>
@@ -216,7 +229,7 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
         <span className="pastille code">{t.ensemble}</span>
       </div>
       <p className="sous">
-        {porte ? `Ensemble ${t.ensemble} dans cette pièce.` : <>Tableau situé dans <button className="lien" onClick={() => onSelection(t.pieceId)}>{t.bloc}</button>.</>}
+        {porte ? `Ensemble ${t.ensemble} dans cette pièce${(t.coffrets ?? 1) > 1 ? ', en deux coffrets côte à côte' : ''}.` : <>Tableau situé dans <button className="lien" onClick={() => onSelection(t.pieceId)}>{t.bloc}</button>.</>}
       </p>
       {!t.calculable ? (
         <>
@@ -353,7 +366,7 @@ function TableauxEnGrand({ resultat, initial, onFermer, onSelection }: { resulta
               <div><b>{t.circuits}</b><span>circuits</span></div>
             </div>
           ) : <div className="message attention petit">Tétra : contenu de l’ensemble, disjoncteurs à adapter dans Esabora.</div>}
-          <Legende />
+          <Legende t={t} />
           <Remplissage t={t} />
           <Phases t={t} />
           <ListeDeparts t={t} />

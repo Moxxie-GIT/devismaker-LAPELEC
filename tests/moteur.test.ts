@@ -88,11 +88,24 @@ test('liaison bus : sous chaque TD qui contient du KNX, et seulement ceux-là', 
   assert.deepEqual(blocsLiaison(calculer(d, params)), ['Cuisine']);
 });
 
-test('coffret trop petit : avertissement', () => {
+test('TD plein : deuxième coffret à côté, alimenté par le premier', () => {
   const d = villaDemo();
-  d.pieces.find((p) => p.nom === 'Chambre 1')!.elements.push(nouvelElement('CLIM', 30));
+  d.pieces.find((p) => p.nom === 'Chambre 1')!.elements.push(nouvelElement('CLIM', 12));
   const r = calculer(d, params);
-  assert.ok(r.alertes.some((a) => a.niveau === 'attention' && /TD Chambre 1 : \d+ modules pour 39 places/.test(a.message)));
+  const t = r.tableaux.find((x) => x.nom === 'TD Chambre 1')!;
+  assert.equal(t.coffrets, 2);
+  assert.ok(r.alertes.some((a) => /TD Chambre 1 : le coffret est plein .*Deuxième coffret/.test(a.message)));
+  // coffret, porte et peigne vertical de l'ensemble passent de 1 à 2
+  const ch = r.aModifier.find((a) => a.tableau === 'TD Chambre 1')!.changements.filter((c) => c.cle.startsWith('EXT'));
+  assert.deepEqual(ch.map((c) => `${c.ref}:${c.base}>${c.final}`), ['Leg 401213:1>2', 'Leg 093032:1>2', 'Leg 405001:1>2']);
+  // tout tient dans les deux coffrets, et les modules KNX ne sont pas coupés entre les deux
+  const dsp = disposer(t);
+  assert.ok(dsp.rangeesUtiles <= 6);
+  const coffretsKnx = new Set(dsp.rangees.flatMap((rg, i) => (rg.some((m) => m.etat === 'knx') ? [dsp.coffretDe(i)] : [])));
+  assert.equal(coffretsKnx.size, 1);
+  // beaucoup trop pour deux coffrets : on le signale
+  d.pieces.find((p) => p.nom === 'Chambre 1')!.elements.push(nouvelElement('CLIM', 60));
+  assert.ok(calculer(d, params).alertes.some((a) => /TD Chambre 1 : .*les deux coffrets\. Prévoir un coffret plus grand/.test(a.message)));
 });
 
 test('TD tétra : départs répartis sur les 3 phases, différentiels par phase', () => {
@@ -167,6 +180,24 @@ test('disposition aux normes : 8 circuits au plus par ID, type A sous ID A, grou
         assert.equal(rangs.length, 1, `${t.nom} ${g.libelle} sur ${rangs.length} rangées`);
       }
     }
+  }
+});
+
+test('modules KNX : actionneurs dans leur tableau, système au TGBT, sur leurs propres rangées', () => {
+  const r = calculer(villaDemo(), params);
+  const tgbt = r.tableaux.find((t) => t.id === 'TGBT')!;
+  for (const k of ['ALIM', 'HORL', 'IP', 'USB']) {
+    assert.equal(tgbt.modules[k], r.domotique!.modules[k], k);
+    for (const t of r.tableaux.filter((x) => x.id !== 'TGBT')) assert.ok(!t.modules[k], `${t.nom} : ${k}`);
+  }
+  const largeur: Record<string, number> = { ALIM: 3, HORL: 3, IP: 2, USB: 2, RM16: 8, RM8: 4, RM4: 4, SM4: 4, DM4T: 4, DALI: 4, JM4T: 4 };
+  for (const t of r.tableaux) {
+    const d = disposer(t);
+    const knx = d.mods.filter((m) => m.etat === 'knx');
+    assert.equal(knx.length, Object.values(t.modules).reduce((a, n) => a + n, 0), t.nom);
+    for (const m of knx) assert.equal(m.largeur, largeur[m.knx!], `${t.nom} ${m.knx}`);
+    // jamais sur la rangée d'un interrupteur différentiel
+    for (const rg of d.rangees) assert.ok(!(rg.some((m) => m.etat === 'knx') && rg.some((m) => m.cle.startsWith('ID'))), t.nom);
   }
 });
 

@@ -327,6 +327,28 @@ export const TABLEAUX: Record<string, ModeleTableau> = {
   },
 };
 
+/**
+ * Modules KNX posés sur rail (facturés dans le bloc Domotique, pas dans l'ensemble du tableau).
+ * Les actionneurs vont dans le tableau qui alimente leurs circuits ; alimentation, horloge et interfaces au TGBT.
+ * Les modules d'entrée TA 2 / TA 4 sont derrière les plaques d'inter : pas dans le tableau.
+ */
+export const MODULES_KNX: Record<string, { label: string; nom: string; modules: number; sorties?: number; canal?: string }> = {
+  ALIM: { label: 'Alim 640mA', nom: 'Alimentation KNX 640 mA', modules: 3 },
+  HORL: { label: 'Horloge KNX', nom: 'Horloge domotique', modules: 3 },
+  IP: { label: 'IP/KNX', nom: 'Interface IP/KNX', modules: 2 },
+  USB: { label: 'USB/KNX', nom: 'Interface USB/KNX', modules: 2 },
+  RM16: { label: 'RM 16', nom: 'Module RM 16 sorties on/off', modules: 8, sorties: 16, canal: 'onoff' },
+  RM8: { label: 'RM 8', nom: 'Module RM 8 sorties on/off', modules: 4, sorties: 8, canal: 'onoff' },
+  RM4: { label: 'RM 4', nom: 'Module RM 4 sorties on/off', modules: 4, sorties: 4, canal: 'onoff' },
+  SM4: { label: 'SM 4', nom: 'Module SM 4 variation 1-10 V', modules: 4, sorties: 4, canal: 'SM4' },
+  DM4T: { label: 'DM 4 T', nom: 'Module DM 4 T variation 230 V', modules: 4, sorties: 4, canal: 'DM4T' },
+  DALI: { label: 'DM 4 DALI', nom: 'Module DM 4 DALI', modules: 4, sorties: 4, canal: 'DALI' },
+  JM4T: { label: 'JM 4 T', nom: 'Module JM 4 T stores, volets, rideaux', modules: 4, sorties: 4, canal: 'JM4T' },
+};
+export const ORDRE_KNX = ['ALIM', 'HORL', 'IP', 'USB', 'RM16', 'RM8', 'RM4', 'SM4', 'DM4T', 'DALI', 'JM4T'];
+/** Modules système de la domotique, toujours posés au TGBT. */
+export const KNX_TGBT = ['ALIM', 'HORL', 'IP', 'USB'];
+
 /** Places sur les rails du coffret, et modules occupés par le contenu final d'un tableau. */
 export function placesCoffret(m: ModeleTableau): number | undefined {
   return m.coffret ? m.coffret.rangees * m.coffret.parRangee : undefined;

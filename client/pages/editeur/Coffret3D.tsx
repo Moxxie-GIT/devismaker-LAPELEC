@@ -30,8 +30,9 @@ const TEINTES: Record<Teinte, { plastron: number; coffret: number; fond: number 
 };
 const C = { rail: 0xc4cbcc, survol: 0x1f5fae };
 
-export function longueurVue(nbRangees: number, parRangee: number) {
-  return { largeur: parRangee * W + 2 * MARGE + 0.8, hauteur: nbRangees * PAS + 1.6 };
+export function longueurVue(nbRangees: number, parRangee: number, coffrets = 1) {
+  const un = parRangee * W + 2 * MARGE + 0.8;
+  return { largeur: coffrets * un + (coffrets - 1) * 4, hauteur: Math.ceil(nbRangees / coffrets) * PAS + 1.6 };
 }
 
 function reduitMouvement() {
@@ -104,7 +105,7 @@ function texteRangee(r: Mod[], parRangee: number): CanvasTexture {
       for (let k = -c.height; k < w + c.height; k += 22) { g.beginPath(); g.moveTo(x + k, c.height); g.lineTo(x + k + c.height, 0); g.stroke(); }
       g.restore();
     }
-    const couleur = m.etat === 'ajoute' ? '#174a88' : m.etat === 'inutile' ? '#8f999c' : m.etat === 'fixe' ? '#4a5862' : '#1c2730';
+    const couleur = m.etat === 'ajoute' ? '#174a88' : m.etat === 'inutile' ? '#8f999c' : m.etat === 'fixe' ? '#4a5862' : m.etat === 'knx' ? '#2f5f3a' : '#1c2730';
     if (m.fonctions?.length) ecrireFonctions(g, m.fonctions, x, w, c.height, couleur);
     else if (m.etat === 'inutile') ecrireFonctions(g, ['Réserve'], x, w, c.height, couleur);
     else if (m.etat !== 'libre' && m.rep) {
@@ -227,7 +228,7 @@ class Vue {
   }
 
   /** Reconstruit le coffret. Les appareils qui n'existaient pas au tour précédent arrivent avec une petite animation. */
-  construire(rangees: Mod[][], id: string, parRangee = PAR_RANGEE_DEFAUT, teinte: Teinte = 'blanc') {
+  construire(rangees: Mod[][], id: string, parRangee = PAR_RANGEE_DEFAUT, teinte: Teinte = 'blanc', rangeesParCoffret?: number) {
     const LARG_UTILE = parRangee * W;
     const LARG = LARG_UTILE + 2 * MARGE;
     const T = TEINTES[teinte];
@@ -236,78 +237,89 @@ class Vue {
     this.cibles = []; this.survole = null; this.bulle.hidden = true;
     if (id !== this.dernierId) { this.precedent = new Set(); this.dernierId = id; }
 
-    const n = Math.max(1, rangees.length);
-    const haut = n * PAS + 1.2;
-    const yRang = (i: number) => haut / 2 - 0.6 - PAS / 2 - i * PAS;
-
-    // coffret : fond et bords
-    const mCoffret = this.mat({ color: T.coffret, roughness: 0.55 });
-    const fond = new Mesh(new BoxGeometry(LARG + 0.8, haut + 0.8, 0.3), this.mat({ color: T.fond, roughness: 0.7 }));
-    fond.position.z = Z_FOND - 0.15; fond.receiveShadow = true;
-    this.contenu.add(fond);
-    const prof = Z_FACE - Z_FOND;
-    for (const [w, h, x, y] of [[LARG + 0.8, 0.4, 0, haut / 2 + 0.2], [LARG + 0.8, 0.4, 0, -haut / 2 - 0.2], [0.4, haut + 0.8, LARG / 2 + 0.2, 0], [0.4, haut + 0.8, -LARG / 2 - 0.2, 0]]) {
-      const b = new Mesh(new BoxGeometry(w, h, prof), mCoffret);
-      b.position.set(x, y, Z_FOND + prof / 2); b.castShadow = b.receiveShadow = true;
-      this.contenu.add(b);
-      this.jetables.push(b.geometry);
-    }
-    this.jetables.push(fond.geometry);
-
-    // plastron découpé à la hauteur de chaque rail
-    const forme = new Shape();
-    forme.moveTo(-LARG / 2, -haut / 2); forme.lineTo(LARG / 2, -haut / 2); forme.lineTo(LARG / 2, haut / 2); forme.lineTo(-LARG / 2, haut / 2); forme.closePath();
-    for (let i = 0; i < n; i++) {
-      const y = yRang(i), l = LARG_UTILE / 2 + 0.08, h = FENETRE / 2;
-      const trou = new Path();
-      trou.moveTo(-l, y - h); trou.lineTo(-l, y + h); trou.lineTo(l, y + h); trou.lineTo(l, y - h); trou.closePath();
-      forme.holes.push(trou);
-    }
-    const gPlastron = new ExtrudeGeometry(forme, { depth: EP_PLASTRON, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2 });
-    const plastron = new Mesh(gPlastron, this.mat({ color: T.plastron, roughness: 0.42 }));
-    plastron.position.z = Z_FACE + 0.02; plastron.castShadow = plastron.receiveShadow = true;
-    this.contenu.add(plastron);
-    this.jetables.push(gPlastron);
-
-    const mRail = this.mat({ color: C.rail, metalness: 0.55, roughness: 0.38 });
-    const gRailA = this.geo(`railA${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 3.5, 0.12));
-    const gRailB = this.geo(`railB${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 2.5, 0.75));
-
+    // un ou plusieurs coffrets identiques côte à côte (TD plein : le deuxième est alimenté par le premier)
+    const lots: Mod[][][] = [];
+    const parCoffret = rangeesParCoffret && rangeesParCoffret < rangees.length ? rangeesParCoffret : rangees.length;
+    for (let k = 0; k < rangees.length; k += Math.max(1, parCoffret)) lots.push(rangees.slice(k, k + Math.max(1, parCoffret)));
+    if (!lots.length) lots.push([]);
+    const ECART = 4;
     const nouveaux = new Set<string>();
     const animer = !reduitMouvement();
     const maintenant = performance.now();
     let rang = 0;
 
-    rangees.forEach((r, i) => {
-      const y = yRang(i);
-      const railA = new Mesh(gRailA, mRail); railA.position.set(0, y, Z_FOND + 0.36); railA.receiveShadow = true;
-      const railB = new Mesh(gRailB, mRail); railB.position.set(0, y, Z_FOND + 0.6); railB.receiveShadow = true; railB.castShadow = true;
-      this.contenu.add(railA, railB);
+    const mRail = this.mat({ color: C.rail, metalness: 0.55, roughness: 0.38 });
+    const gRailA = this.geo(`railA${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 3.5, 0.12));
+    const gRailB = this.geo(`railB${parRangee}`, () => new BoxGeometry(LARG_UTILE + 1.2, 2.5, 0.75));
 
-      // porte-étiquette au-dessus de la découpe
-      const tex = texteRangee(r, parRangee);
-      const gEt = new PlaneGeometry(LARG_UTILE, HAUT_ETIQ);
-      const et = new Mesh(gEt, new MeshBasicMaterial({ map: tex, toneMapped: false }));
-      et.position.set(0, y + FENETRE / 2 + 0.35 + HAUT_ETIQ / 2, Z_FACE + EP_PLASTRON + 0.09);
-      this.contenu.add(et);
-      this.jetables.push(tex, gEt, et.material as Material);
+    lots.forEach((lot, c) => {
+      const grp = new Group();
+      grp.position.x = (c - (lots.length - 1) / 2) * (LARG + 0.8 + ECART);
+      this.contenu.add(grp);
+      const n = Math.max(1, lot.length);
+      const haut = n * PAS + 1.2;
+      const yRang = (i: number) => haut / 2 - 0.6 - PAS / 2 - i * PAS;
 
-      let x = -LARG_UTILE / 2;
-      r.forEach((m, j) => {
-        const w = m.largeur * W;
-        const cle = `${i}.${j}.${m.cle}.${m.etat}`;
-        nouveaux.add(cle);
-        if (m.etat !== 'libre') {
-          const app = this.appareil(m);
-          app.position.set(x + w / 2, y, 0);
-          this.contenu.add(app);
-          if (animer && !this.precedent.has(cle)) {
-            app.position.z = 3.5;
-            this.anims.push({ obj: app, depart: maintenant + rang * 22, duree: 420, dz: 3.5 });
-            rang++;
+      // coffret : fond et bords
+      const mCoffret = this.mat({ color: T.coffret, roughness: 0.55 });
+      const fond = new Mesh(new BoxGeometry(LARG + 0.8, haut + 0.8, 0.3), this.mat({ color: T.fond, roughness: 0.7 }));
+      fond.position.z = Z_FOND - 0.15; fond.receiveShadow = true;
+      grp.add(fond);
+      const prof = Z_FACE - Z_FOND;
+      for (const [w, h, x, y] of [[LARG + 0.8, 0.4, 0, haut / 2 + 0.2], [LARG + 0.8, 0.4, 0, -haut / 2 - 0.2], [0.4, haut + 0.8, LARG / 2 + 0.2, 0], [0.4, haut + 0.8, -LARG / 2 - 0.2, 0]]) {
+        const b = new Mesh(new BoxGeometry(w, h, prof), mCoffret);
+        b.position.set(x, y, Z_FOND + prof / 2); b.castShadow = b.receiveShadow = true;
+        grp.add(b);
+        this.jetables.push(b.geometry);
+      }
+      this.jetables.push(fond.geometry);
+
+      // plastron découpé à la hauteur de chaque rail
+      const forme = new Shape();
+      forme.moveTo(-LARG / 2, -haut / 2); forme.lineTo(LARG / 2, -haut / 2); forme.lineTo(LARG / 2, haut / 2); forme.lineTo(-LARG / 2, haut / 2); forme.closePath();
+      for (let i = 0; i < n; i++) {
+        const y = yRang(i), l = LARG_UTILE / 2 + 0.08, h = FENETRE / 2;
+        const trou = new Path();
+        trou.moveTo(-l, y - h); trou.lineTo(-l, y + h); trou.lineTo(l, y + h); trou.lineTo(l, y - h); trou.closePath();
+        forme.holes.push(trou);
+      }
+      const gPlastron = new ExtrudeGeometry(forme, { depth: EP_PLASTRON, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2 });
+      const plastron = new Mesh(gPlastron, this.mat({ color: T.plastron, roughness: 0.42 }));
+      plastron.position.z = Z_FACE + 0.02; plastron.castShadow = plastron.receiveShadow = true;
+      grp.add(plastron);
+      this.jetables.push(gPlastron);
+
+      lot.forEach((r, i) => {
+        const y = yRang(i);
+        const railA = new Mesh(gRailA, mRail); railA.position.set(0, y, Z_FOND + 0.36); railA.receiveShadow = true;
+        const railB = new Mesh(gRailB, mRail); railB.position.set(0, y, Z_FOND + 0.6); railB.receiveShadow = true; railB.castShadow = true;
+        grp.add(railA, railB);
+
+        // porte-étiquette au-dessus de la découpe
+        const tex = texteRangee(r, parRangee);
+        const gEt = new PlaneGeometry(LARG_UTILE, HAUT_ETIQ);
+        const et = new Mesh(gEt, new MeshBasicMaterial({ map: tex, toneMapped: false }));
+        et.position.set(0, y + FENETRE / 2 + 0.35 + HAUT_ETIQ / 2, Z_FACE + EP_PLASTRON + 0.09);
+        grp.add(et);
+        this.jetables.push(tex, gEt, et.material as Material);
+
+        let x = -LARG_UTILE / 2;
+        r.forEach((m, j) => {
+          const w = m.largeur * W;
+          const cle = `${c}.${i}.${j}.${m.cle}.${m.etat}`;
+          nouveaux.add(cle);
+          if (m.etat !== 'libre') {
+            const app = this.appareil(m);
+            app.position.set(x + w / 2, y, 0);
+            grp.add(app);
+            if (animer && !this.precedent.has(cle)) {
+              app.position.z = 3.5;
+              this.anims.push({ obj: app, depart: maintenant + rang * 22, duree: 420, dz: 3.5 });
+              rang++;
+            }
           }
-        }
-        x += w;
+          x += w;
+        });
       });
     });
     this.precedent = nouveaux;
@@ -322,7 +334,7 @@ class Vue {
     this.soleil.target.position.set(0, 0, 0);
 
     // on ne recadre que si le coffret change de forme : renommer une pièce ne doit pas remettre la vue à zéro
-    const cadre = `${id}|${n}|${parRangee}`;
+    const cadre = `${id}|${rangees.length}|${parRangee}|${lots.length}`;
     if (cadre !== this.dernierCadre) { this.dernierCadre = cadre; this.recadrer(); } else this.demander();
   }
 
@@ -445,7 +457,7 @@ export default function Coffret3D({ t, grand = false, onErreur }: { t: TableauCa
   const vue = useRef<Vue | null>(null);
   const d = disposition(t);
   // reconstruit la scène si un appareil, son état ou son étiquette change (renommer une pièce change les étiquettes)
-  const signature = `${t.id}|${d.parRangee}|${d.coffret?.teinte}|${d.rangees.map((r) => r.map((m) => `${m.cle}${m.etat}${m.fonctions?.join('+') ?? ''}`).join(',')).join('/')}`;
+  const signature = `${t.id}|${d.parRangee}|${d.coffrets}|${d.coffret?.teinte}|${d.rangees.map((r) => r.map((m) => `${m.cle}${m.etat}${m.fonctions?.join('+') ?? ''}`).join(',')).join('/')}`;
 
   useEffect(() => {
     try { vue.current = new Vue(hote.current!, grand); }
@@ -453,9 +465,11 @@ export default function Coffret3D({ t, grand = false, onErreur }: { t: TableauCa
     return () => { vue.current?.detruire(); vue.current = null; };
   }, [grand]);
 
-  useEffect(() => { vue.current?.construire(d.rangees, t.id, d.parRangee, d.coffret?.teinte); }, [signature, grand]);
+  useEffect(() => {
+    vue.current?.construire(d.rangees, t.id, d.parRangee, d.coffret?.teinte, d.coffrets > 1 ? d.coffret?.rangees : undefined);
+  }, [signature, grand]);
 
-  const { largeur, hauteur } = longueurVue(d.rangees.length, d.parRangee);
+  const { largeur, hauteur } = longueurVue(d.rangees.length, d.parRangee, d.coffrets);
   return (
     <div
       ref={hote} className={`coffret-3d${grand ? ' grand' : ''}`}

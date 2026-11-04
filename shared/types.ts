@@ -172,6 +172,8 @@ export interface TableauCalcule {
    * Un groupe sans tête regroupe les appareils qui ont leur propre différentiel (départs 300 mA, 4P).
    */
   groupes?: GroupeTableau[];
+  /** TD plein : 2 = un deuxième coffret identique à côté du premier, alimenté par lui. */
+  coffrets?: number;
 }
 
 export interface GroupeTableau {
