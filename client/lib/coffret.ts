@@ -8,7 +8,11 @@ const REPERE: Record<string, string> = { C10: 'C10', C16: 'C16', C20: 'C20', C32
 const ORDRE = ['IDAC', 'IDA', 'D32', 'D40', 'C10', 'C16', 'C20', 'C32'];
 
 export type EtatModule = '' | 'ajoute' | 'inutile' | 'fixe' | 'libre';
-export interface Mod { cle: string; rep: string; nom: string; ref?: string; largeur: number; etat: EtatModule }
+export interface Mod {
+  cle: string; rep: string; nom: string; ref?: string; largeur: number; etat: EtatModule;
+  /** Ce que protège ce disjoncteur (« Éclairage Salon, Cuisine », « Plaque de cuisson (Cuisine) »…), pour l'étiquette. */
+  fonctions?: string[];
+}
 
 export const LIBELLE_ETAT: Record<EtatModule, string> = {
   '': 'Inclus dans l’ensemble',
@@ -26,7 +30,9 @@ export function modules(t: TableauCalcule): Mod[] {
     if (!p) continue;
     for (let i = 0; i < p.final; i++) {
       const etat: EtatModule = i >= p.base ? 'ajoute' : i >= p.besoin ? 'inutile' : '';
-      out.push({ cle: k, rep: REPERE[k] ?? k, nom: p.label, ref: p.ref, largeur: MODULES_PROTECTION[k] ?? 1, etat });
+      // les « besoin » premiers disjoncteurs ont une fonction ; au-delà, ils sont facturés mais en réserve
+      const fonctions = i < p.besoin ? t.departs?.[k]?.[i] : undefined;
+      out.push({ cle: k, rep: REPERE[k] ?? k, nom: p.label, ref: p.ref, largeur: MODULES_PROTECTION[k] ?? 1, etat, fonctions });
     }
   }
   return out;

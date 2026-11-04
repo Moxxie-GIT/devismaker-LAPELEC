@@ -162,6 +162,8 @@ export interface TableauCalcule {
   detail: string[];
   canaux: Record<string, number>;
   modules: Record<string, number>;
+  /** Fonction(s) de chaque disjoncteur nécessaire, par protection (C10, C20…) : départs[cle][n] = fonctions du n-ième. */
+  departs: Record<string, string[][]>;
 }
 
 export interface Alerte {

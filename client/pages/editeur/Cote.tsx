@@ -1,7 +1,7 @@
 // Panneau de droite : le tableau qui alimente la pièce, en 3D (coffret sur rails DIN) ou en schéma 2D.
 import { Component, Suspense, lazy, useState, type ReactNode } from 'react';
 import type { Devis, Piece, Resultat, TableauCalcule } from '../../../shared/types';
-import { disposition } from '../../lib/coffret';
+import { disposition, type Mod } from '../../lib/coffret';
 import { Icone } from '../../lib/icones';
 import { Fenetre, Segments } from '../../lib/ui';
 
@@ -45,7 +45,7 @@ export function SchemaTableau({ t }: { t: TableauCalcule }) {
       {rangees.map((r, i) => (
         <div className="rangee" key={i}>
           {r.map((x, j) => (
-            <div key={j} className={`module${x.largeur === 2 ? ' x2' : ''} ${x.etat}`} title={x.nom || x.rep}>
+            <div key={j} className={`module${x.largeur === 2 ? ' x2' : ''} ${x.etat}`} title={[x.fonctions?.join(' · ') ?? (x.etat === 'inutile' ? 'Réserve' : ''), x.nom || x.rep].filter(Boolean).join('\n')}>
               <span className="rep">{x.rep}</span><span className="manette" /><span />
             </div>
           ))}
@@ -91,6 +91,33 @@ function VueTableau({ t, onAgrandir }: { t: TableauCalcule; onAgrandir: () => vo
       <Legende />
       <Remplissage t={t} />
     </div>
+  );
+}
+
+/** « C32\n300mA » → « C32 » */
+const calibre = (m: Mod) => m.rep.split('\n')[0];
+
+/** Les départs du tableau en clair : ce qui est écrit sur l'étiquette de chaque disjoncteur. */
+function ListeDeparts({ t, ouvert = true }: { t: TableauCalcule; ouvert?: boolean }) {
+  const { mods } = disposition(t);
+  const departs = mods.filter((m) => m.fonctions?.length);
+  const reserve = mods.filter((m) => m.etat === 'inutile');
+  if (!departs.length) return null;
+  return (
+    <details className="departs" open={ouvert}>
+      <summary><h3>Étiquettes du tableau</h3><span className="compte">{departs.length}</span></summary>
+      <ul>
+        {departs.map((m, i) => (
+          <li key={i} className={m.etat === 'ajoute' ? 'ajoute' : ''}>
+            <span className="calibre">{calibre(m)}</span>
+            <span className="fonctions">{m.fonctions!.map((f, k) => <span key={k}>{f}</span>)}</span>
+          </li>
+        ))}
+      </ul>
+      {reserve.length > 0 && (
+        <p className="petit discret">En réserve (facturés, non utilisés) : {reserve.map(calibre).join(', ')}.</p>
+      )}
+    </details>
   );
 }
 
@@ -161,6 +188,7 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
             <div><b>{t.circuits}</b><span>circuits</span></div>
           </div>
           <VueTableau t={t} onAgrandir={() => setGrand(t.id)} />
+          <ListeDeparts t={t} />
           <AFaire t={t} resultat={resultat} />
         </>
       )}
@@ -244,6 +272,7 @@ function TableauxEnGrand({ resultat, initial, onFermer, onSelection }: { resulta
           </div>
           <Legende />
           <Remplissage t={t} />
+          <ListeDeparts t={t} />
           <AFaire t={t} resultat={resultat} />
           <button className="btn petit" style={{ marginTop: 14 }} onClick={() => onSelection(t.pieceId)}>Ouvrir la pièce {t.bloc}</button>
         </div>

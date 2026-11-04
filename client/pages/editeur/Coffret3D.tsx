@@ -35,35 +35,85 @@ function reduitMouvement() {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
-/** Bande du porte-étiquette d'une rangée : repères dessinés comme sur un vrai tableau. */
+const HAUT_ETIQ = 2.4;     // hauteur du porte-étiquette (cm)
+const PX_MODULE = 120;     // résolution du porte-étiquette : pixels par module
+
+/** Coupe un texte en lignes qui tiennent dans « largeur » pixels avec la police courante. */
+function couper(g: CanvasRenderingContext2D, texte: string, largeur: number): string[] {
+  const lignes: string[] = [];
+  let cur = '';
+  for (const mot of texte.split(/\s+/).filter(Boolean)) {
+    const essai = cur ? `${cur} ${mot}` : mot;
+    if (cur && g.measureText(essai).width > largeur) { lignes.push(cur); cur = mot; } else cur = essai;
+  }
+  if (cur) lignes.push(cur);
+  return lignes;
+}
+
+/** Écrit les fonctions d'un disjoncteur dans sa case, en réduisant la police jusqu'à ce que tout tienne. */
+function ecrireFonctions(g: CanvasRenderingContext2D, fonctions: string[], x: number, w: number, h: number, couleur: string) {
+  const marge = 7, utile = w - 2 * marge, dispo = h - 2 * marge - 6;
+  const police = (t: number) => `600 ${t}px Bahnschrift, "Segoe UI", "Arial Narrow", sans-serif`;
+  try { (g as any).fontStretch = 'semi-condensed'; } catch { /* navigateur sans fontStretch */ }
+  let taille = 25, blocs: string[][] = [];
+  const hauteur = (t: number, b: string[][]) => b.reduce((a, l) => a + l.length, 0) * t * 1.08 + (b.length - 1) * t * 0.35;
+  for (; taille >= 13; taille--) {
+    g.font = police(taille);
+    blocs = fonctions.map((f) => couper(g, f, utile));
+    const tropLarge = blocs.some((l) => l.some((s) => g.measureText(s).width > utile));
+    if (!tropLarge && hauteur(taille, blocs) <= dispo) break;
+  }
+  taille = Math.max(13, taille);
+  g.font = police(taille);
+  // si ça ne tient toujours pas, on garde ce qui entre et on termine par « … »
+  let lignes = blocs.flatMap((l, i) => (i ? ['', ...l] : l));
+  const max = Math.floor(dispo / (taille * 1.08));
+  if (lignes.length > max) lignes = [...lignes.slice(0, max - 1), `${lignes[max - 1]}…`];
+  const hTotal = lignes.reduce((a, l) => a + (l ? taille * 1.08 : taille * 0.35), 0);
+  let y = (h - hTotal) / 2 + taille * 0.54;
+  g.fillStyle = couleur; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const l of lignes) {
+    if (!l) { // séparation entre deux fonctions
+      g.fillStyle = '#c3cbc9'; g.fillRect(x + w * 0.3, y - taille * 0.54 + taille * 0.1, w * 0.4, 1.5); g.fillStyle = couleur;
+      y += taille * 0.35; continue;
+    }
+    g.fillText(l, x + w / 2, y, utile);
+    y += taille * 1.08;
+  }
+}
+
+/** Bande du porte-étiquette d'une rangée : la fonction de chaque disjoncteur, comme on l'écrit sur un vrai tableau. */
 function texteRangee(r: Mod[]): CanvasTexture {
-  const px = 88;
+  const px = PX_MODULE;
   const c = document.createElement('canvas');
-  c.width = PAR_RANGEE * px; c.height = 120;
+  c.width = PAR_RANGEE * px; c.height = Math.round((px * HAUT_ETIQ) / W);
   const g = c.getContext('2d')!;
   g.fillStyle = '#fdfdfb'; g.fillRect(0, 0, c.width, c.height);
   let x = 0;
   for (const m of r) {
     const w = m.largeur * px;
     if (m.etat === 'ajoute') {
-      g.fillStyle = '#dfe9f8'; g.fillRect(x, 0, w, c.height);
-      g.fillStyle = '#1f5fae'; g.fillRect(x, c.height - 12, w, 12);
+      g.fillStyle = '#e3ecf9'; g.fillRect(x, 0, w, c.height);
+      g.fillStyle = '#1f5fae'; g.fillRect(x, c.height - 8, w, 8);
     } else if (m.etat === 'inutile') {
       g.save(); g.beginPath(); g.rect(x, 0, w, c.height); g.clip();
-      g.strokeStyle = '#e1e5e3'; g.lineWidth = 8;
+      g.strokeStyle = '#e6e9e8'; g.lineWidth = 8;
       for (let k = -c.height; k < w + c.height; k += 22) { g.beginPath(); g.moveTo(x + k, c.height); g.lineTo(x + k + c.height, 0); g.stroke(); }
       g.restore();
     }
-    if (m.etat !== 'libre' && m.rep) {
+    const couleur = m.etat === 'ajoute' ? '#174a88' : m.etat === 'inutile' ? '#8f999c' : m.etat === 'fixe' ? '#4a5862' : '#1c2730';
+    if (m.fonctions?.length) ecrireFonctions(g, m.fonctions, x, w, c.height, couleur);
+    else if (m.etat === 'inutile') ecrireFonctions(g, ['Réserve'], x, w, c.height, couleur);
+    else if (m.etat !== 'libre' && m.rep) {
+      // différentiels et appareils fixes : leur repère
       const lignes = m.rep.split('\n');
-      g.fillStyle = m.etat === 'ajoute' ? '#174a88' : m.etat === 'inutile' ? '#8f999c' : m.etat === 'fixe' ? '#4a5862' : '#1c2730';
-      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = couleur; g.textAlign = 'center'; g.textBaseline = 'middle';
       lignes.forEach((l, i) => {
-        let taille = i === 0 ? 40 : 28;
+        let taille = i === 0 ? 38 : 26;
         const police = (t: number) => `${i === 0 ? 600 : 400} ${t}px Bahnschrift, "DIN Alternate", "Arial Narrow", sans-serif`;
         g.font = police(taille);
-        while (taille > 16 && g.measureText(l).width > w - 12) { taille -= 2; g.font = police(taille); }
-        const y = lignes.length === 1 ? 58 : 40 + i * 40;
+        while (taille > 14 && g.measureText(l).width > w - 14) { taille -= 2; g.font = police(taille); }
+        const y = lignes.length === 1 ? c.height / 2 : c.height / 2 - 20 + i * 40;
         g.fillText(l, x + w / 2, y);
       });
     }
@@ -95,6 +145,7 @@ class Vue {
   private anims: { obj: Object3D; depart: number; duree: number; dz: number }[] = [];
   private precedent = new Set<string>();
   private dernierId = '';
+  private dernierCadre = '';
   private observateur: ResizeObserver;
   private bulle: HTMLDivElement;
   private direction: Vector3;
@@ -229,9 +280,9 @@ class Vue {
 
       // porte-étiquette au-dessus de la découpe
       const tex = texteRangee(r);
-      const gEt = new PlaneGeometry(LARG_UTILE, 1.5);
+      const gEt = new PlaneGeometry(LARG_UTILE, HAUT_ETIQ);
       const et = new Mesh(gEt, new MeshBasicMaterial({ map: tex, toneMapped: false }));
-      et.position.set(0, y + FENETRE / 2 + 1.25, Z_FACE + EP_PLASTRON + 0.09);
+      et.position.set(0, y + FENETRE / 2 + 0.35 + HAUT_ETIQ / 2, Z_FACE + EP_PLASTRON + 0.09);
       this.contenu.add(et);
       this.jetables.push(tex, gEt, et.material as Material);
 
@@ -264,7 +315,9 @@ class Vue {
     this.soleil.position.set(-16, 26, 30);
     this.soleil.target.position.set(0, 0, 0);
 
-    this.recadrer();
+    // on ne recadre que si le coffret change de forme : renommer une pièce ne doit pas remettre la vue à zéro
+    const cadre = `${id}|${n}`;
+    if (cadre !== this.dernierCadre) { this.dernierCadre = cadre; this.recadrer(); } else this.demander();
   }
 
   private appareil(m: Mod): Group {
@@ -295,9 +348,12 @@ class Vue {
       const m = o.userData.mod as Mod;
       this.bulle.replaceChildren();
       const b = document.createElement('b'); b.textContent = m.rep.replace('\n', ' ');
+      const fonctions = (m.fonctions ?? (m.etat === 'inutile' ? ['Réserve'] : [])).map((f) => {
+        const s = document.createElement('strong'); s.className = 'fonction'; s.textContent = f; return s;
+      });
       const nom = document.createElement('span'); nom.textContent = m.nom && m.nom !== m.rep ? m.nom : '';
       const etat = document.createElement('em'); etat.textContent = LIBELLE_ETAT[m.etat]; etat.className = `etat-${m.etat || 'inclus'}`;
-      this.bulle.append(b, nom, etat);
+      this.bulle.append(b, ...fonctions, nom, etat);
       this.bulle.hidden = false;
       const hr = this.hote.getBoundingClientRect();
       const x = e.clientX - hr.left, y = e.clientY - hr.top;
@@ -381,7 +437,8 @@ export default function Coffret3D({ t, grand = false, onErreur }: { t: TableauCa
   const hote = useRef<HTMLDivElement>(null);
   const vue = useRef<Vue | null>(null);
   const d = disposition(t);
-  const signature = `${t.id}|${d.rangees.map((r) => r.map((m) => m.cle + m.etat).join(',')).join('/')}`;
+  // reconstruit la scène si un appareil, son état ou son étiquette change (renommer une pièce change les étiquettes)
+  const signature = `${t.id}|${d.rangees.map((r) => r.map((m) => `${m.cle}${m.etat}${m.fonctions?.join('+') ?? ''}`).join(',')).join('/')}`;
 
   useEffect(() => {
     try { vue.current = new Vue(hote.current!, grand); }

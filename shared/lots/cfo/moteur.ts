@@ -34,10 +34,55 @@ export function modulesOnOff(n: number): Record<string, number> {
 
 const ceil = (a: number, b: number) => Math.ceil(a / b);
 
+/** Nom court d'un équipement pour l'étiquette du tableau : « Alimentation plaque de cuisson » → « Plaque de cuisson ». */
+export function nomCourt(designation: string): string {
+  const d = designation.trim();
+  const parenthese = /\(([^)]+)\)\s*$/.exec(d);
+  if (/^prise/i.test(d) && parenthese) return `Prise ${parenthese[1].trim()}`;
+  const s = d.replace(/^alimentation\s+/i, '')
+    .replace(/\b\d+\s*g\s*\d+\s*mm²?/gi, '')
+    .replace(/\b2P\+T\b/gi, '')
+    .replace(/\b(220|230|400)\s*v\b/gi, '')
+    .replace(/\bavec coupure\b/gi, '')
+    .replace(/\s{2,}/g, ' ').trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : d;
+}
+
+interface Charge { quoi: string; piece: string; n: number }
+
+/** Répartit des charges sur des disjoncteurs de « taille » unités (8 points, 12 socles…) et nomme chaque départ. */
+function paquets(charges: Charge[], taille: number): string[][] {
+  const out: string[][] = [];
+  let cur: Charge[] = []; let place = taille;
+  const fermer = () => {
+    if (!cur.length) return;
+    const parQuoi = new Map<string, string[]>();
+    for (const c of cur) {
+      const l = parQuoi.get(c.quoi) ?? [];
+      if (!l.includes(c.piece)) l.push(c.piece);
+      parQuoi.set(c.quoi, l);
+    }
+    out.push([...parQuoi].map(([quoi, pieces]) => `${quoi} ${pieces.join(', ')}`));
+    cur = []; place = taille;
+  };
+  for (const c of charges) {
+    let n = c.n;
+    while (n > 0) {
+      const pris = Math.min(n, place);
+      cur.push({ ...c, n: pris }); n -= pris; place -= pris;
+      if (place === 0) fermer();
+    }
+  }
+  fermer();
+  return out;
+}
+
 interface TableauInterne {
   id: string; nom: string; bloc: string; pieceId: string; modele: ModeleTableau; modeleCle: string; section: 6 | 10; phase: 'mono' | 'tetra';
   points: number; socles: number; vr: number; nA: number; ded: Record<string, number>;
   rattachees: string[]; detail: string[]; canaux: Record<string, number>;
+  // ce que protège chaque départ, pour les étiquettes du tableau
+  fn: { lum: Charge[]; soc: Charge[]; vr: Charge[]; ded: Record<string, string[]> };
 }
 
 export function calculer(data: DevisData, params: Parametres): Resultat {
@@ -67,6 +112,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   const creerTableau = (id: string, nom: string, p: Piece, modeleCle: string): TableauInterne => ({
     id, nom, bloc: p.nom.trim(), pieceId: p.id, modele: TABLEAUX[modeleCle], modeleCle, section: p.tableau.section, phase: p.tableau.phase,
     points: 0, socles: 0, vr: 0, nA: 0, ded: {}, rattachees: [], detail: [], canaux: {},
+    fn: { lum: [], soc: [], vr: [], ded: {} },
   });
   if (tgbts[0]) {
     const p = tgbts[0];
@@ -113,7 +159,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       L(ens, `Point lumineux ${lieu} (${nom})${variation}`, c.nb);
       const h = HEURES_POSE[c.pose];
       if (h != null) L('MO LUM', `Pose luminaire standard (${nom})`, c.nb, { moUnit: h });
-      if (t) { t.points += c.nb; t.detail.push(`${b} : ${c.nb} point(s) ${nom}`); }
+      if (t) { t.points += c.nb; t.detail.push(`${b} : ${c.nb} point(s) ${nom}`); t.fn.lum.push({ quoi: 'Éclairage', piece: b, n: c.nb }); }
       canal(knx ? (MODULES_CANAL[c.commande] ?? 'onoff') : 'onoff', 1);
     }
 
@@ -146,8 +192,14 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       if (c.canal) canal(knx ? c.canal === 'jm' ? 'JM4T' : 'onoff' : 'onoff', e.quantite);
       if (!t) continue;
       switch (c.protection) {
-        case 'P': t.socles += (c.socles ?? 1) * e.quantite; break;
-        case 'VR': t.vr += e.quantite; break;
+        case 'P':
+          t.socles += (c.socles ?? 1) * e.quantite;
+          t.fn.soc.push({ quoi: 'Prises', piece: b, n: (c.socles ?? 1) * e.quantite });
+          break;
+        case 'VR':
+          t.vr += e.quantite;
+          t.fn.vr.push({ quoi: nomCourt(des), piece: b, n: e.quantite });
+          break;
         case 'TRI':
           if (t.modele.calculable) att(`${b} : « ${des} » est en 400 V alors que ${t.nom} est monophasé.`, p.id);
           break;
@@ -155,6 +207,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         default:
           t.ded[c.protection] = (t.ded[c.protection] ?? 0) + e.quantite;
           if (c.typeA) t.nA += e.quantite;
+          for (let i = 0; i < e.quantite; i++) (t.fn.ded[c.protection] ??= []).push(`${nomCourt(des)} (${b})`);
       }
       if (c.protection) t.detail.push(`${b} : ${e.quantite} × ${des}`);
     }
@@ -197,7 +250,10 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
     const participants = Object.values(total).reduce((a, n) => a + n, 0) + detecteurs;
     total.ALIM = Math.max(1, ceil(participants, 64));
     const tg = tableaux.get('TGBT');
-    if (tg) { tg.ded.C10 = (tg.ded.C10 ?? 0) + total.ALIM; tg.detail.push(`Alimentation KNX 640 mA : ${total.ALIM}`); }
+    if (tg) {
+      tg.ded.C10 = (tg.ded.C10 ?? 0) + total.ALIM; tg.detail.push(`Alimentation KNX 640 mA : ${total.ALIM}`);
+      for (let i = 0; i < total.ALIM; i++) (tg.fn.ded.C10 ??= []).push(total.ALIM > 1 ? `Alimentation KNX ${i + 1}` : 'Alimentation KNX');
+    }
     domotique = { modules: total, participants, parInter };
     if (data.domotique.heuresEts == null) err('Domotique : indique le nombre d’heures de programmation ETS.');
   }
@@ -208,8 +264,15 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   const tds = [...tableaux.values()].filter((t) => t.id !== 'TGBT');
   for (const t of tableaux.values()) {
     const protections: Protection[] = [];
+    const departs: Record<string, string[][]> = {};
     let nbCircuits = 0;
     if (t.modele.calculable) {
+      // mêmes règles que le comptage ci-dessous : 8 points ou 8 volets par C10, 12 socles par C20, un départ par équipement dédié
+      const dedies = (k: string) => (t.fn.ded[k] ?? []).map((f) => [f]);
+      departs.C10 = [...paquets(t.fn.lum, 8), ...paquets(t.fn.vr, 8), ...dedies('C10')];
+      departs.C16 = dedies('C16');
+      departs.C20 = [...paquets(t.fn.soc, 12), ...dedies('C20')];
+      departs.C32 = dedies('C32');
       const need: Record<string, number> = {
         C10: ceil(t.points, 8) + ceil(t.vr, 8) + (t.ded.C10 ?? 0),
         C16: t.ded.C16 ?? 0,
@@ -225,6 +288,8 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       if (t.id === 'TGBT') {
         need.D32 = tds.filter((x) => x.phase === 'mono' && x.section === 6).length;
         need.D40 = tds.filter((x) => x.phase === 'mono' && x.section === 10).length;
+        departs.D32 = tds.filter((x) => x.phase === 'mono' && x.section === 6).map((x) => [`Départ ${x.nom}`]);
+        departs.D40 = tds.filter((x) => x.phase === 'mono' && x.section === 10).map((x) => [`Départ ${x.nom}`]);
         const tetra = tds.filter((x) => x.phase === 'tetra');
         if (tetra.length) att(`Départ des TD tétra (${tetra.map((x) => x.nom).join(', ')}) à prévoir à la main dans le TGBT.`);
       }
@@ -246,6 +311,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
       id: t.id, nom: t.nom, bloc: t.bloc, ensemble: t.modele.code, modele: t.modeleCle, pieceId: t.pieceId, calculable: t.modele.calculable,
       points: t.points, socles: t.socles, appareilsVr: t.vr, circuitsA: t.nA, circuits: nbCircuits,
       protections, rattachees: t.rattachees, detail: t.detail, canaux: t.canaux, modules: modulesParTableau.get(t.id) ?? {},
+      departs,
     });
   }
 

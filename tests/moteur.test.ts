@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { calculer, modulesOnOff, modulesPourInter } from '../shared/lots/cfo/moteur';
+import { calculer, modulesOnOff, modulesPourInter, nomCourt } from '../shared/lots/cfo/moteur';
 import { parametresParDefaut } from '../shared/lots';
 import { nouvellePiece } from '../shared/lots/cfo/pieces';
 import { villaDemo } from './fixtures';
@@ -30,6 +30,42 @@ test('villa démo : mêmes lignes que le fichier validé dans Esabora (prix fict
   const obtenu = r.lignes.map((l) => [l.bloc, norm(l.ref), l.designation, l.quantite, norm(l.pu), norm(l.coefMat), norm(l.coefMo), norm(l.moUnit), norm(l.tauxMo), norm(l.unite)]);
   assert.equal(obtenu.length, attendu.length);
   obtenu.forEach((l, i) => assert.deepEqual(l, attendu[i], `ligne ${i + 2}`));
+});
+
+test('noms courts pour les étiquettes du tableau', () => {
+  assert.equal(nomCourt('Alimentation plaque de cuisson'), 'Plaque de cuisson');
+  assert.equal(nomCourt('Prise 2P+T 220V directe (frigo)'), 'Prise frigo');
+  assert.equal(nomCourt('Prise 2P+T 220V directe'), 'Prise directe');
+  assert.equal(nomCourt('Alimentation Machine à laver 2P+T 220v'), 'Machine à laver');
+  assert.equal(nomCourt('Alimentation jacuzzi 3g6mm² 220V'), 'Jacuzzi');
+  assert.equal(nomCourt('Alimentation VMC'), 'VMC');
+});
+
+test('villa démo : une étiquette par disjoncteur nécessaire', () => {
+  const r = calculer(villaDemo(), params);
+  for (const t of r.tableaux.filter((x) => x.calculable)) {
+    for (const p of t.protections) {
+      if (p.cle.startsWith('ID')) continue;         // les différentiels n'ont pas de départ propre
+      assert.equal(t.departs[p.cle]?.length ?? 0, p.besoin, `${t.nom} ${p.cle}`);
+      for (const f of t.departs[p.cle] ?? []) assert.ok(f.length > 0 && f.every((x) => x.trim()), `${t.nom} ${p.cle} : étiquette vide`);
+    }
+  }
+  const tgbt = r.tableaux.find((t) => t.id === 'TGBT')!;
+  assert.ok(Object.values(tgbt.departs).flat(2).includes('Alimentation KNX'));
+});
+
+test('villa démo : étiquettes des disjoncteurs', () => {
+  const r = calculer(villaDemo(), params);
+  const t = (nom: string) => r.tableaux.find((x) => x.nom === nom)!.departs;
+  // un C10 d'éclairage partagé cite toutes les pièces qu'il dessert
+  assert.deepEqual(t('TGBT').C10[1], ['Éclairage WC invité, Terrasse']);
+  // un C10 de volets, stores et portail cite chaque fonction
+  assert.deepEqual(t('TGBT').C10[6], ['Volet roulant Salon', 'Ventilateur Salon', 'Store Terrasse', 'Portail Extérieur']);
+  assert.deepEqual(t('TGBT').C10[8], ['Alimentation KNX']);
+  assert.deepEqual(t('TD Cuisine').C32, [['Plaque de cuisson (Cuisine)']]);
+  assert.deepEqual(t('TD Cuisine').C20[0], ['Prises Cuisine']);
+  assert.deepEqual(t('TGBT').D32, [['Départ TD Chambre 1']]);
+  assert.deepEqual(t('TGBT').D40, [['Départ TD Cuisine']]);
 });
 
 test('villa démo : tableaux à modifier', () => {
