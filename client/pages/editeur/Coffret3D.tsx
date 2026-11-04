@@ -8,10 +8,10 @@ import {
   PMREMGenerator, Raycaster, Scene, Shape, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, BufferGeometry, Path,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { TableauCalcule } from '../../../shared/types';
 import { LIBELLE_ETAT, PAR_RANGEE, disposition, type Mod } from '../../lib/coffret';
+import { Atelier } from './legrand';
 
 // ---- dimensions en centimètres (un module DIN fait 18 mm)
 const W = 1.8;
@@ -24,12 +24,8 @@ const Z_FOND = -3.3;
 const Z_FACE = 2.75;       // face avant du corps des appareils = arrière du plastron
 const EP_PLASTRON = 0.32;
 
-const C = {
-  corps: 0xfbfbf8, corpsAjoute: 0xd9e6f8, corpsInutile: 0xcfd5d4, corpsFixe: 0xe9ebe6,
-  manette: 0x1f2a33, manetteAjoute: 0x1f5fae, manetteInutile: 0xa7b0b2, manetteIs: 0xb8322a,
-  plastron: 0xe1e4e0, coffret: 0xc9cfcc, fond: 0xb9c0bd, rail: 0xc4cbcc, test: 0xe8b923, ecran: 0x26343c,
-  survol: 0x1f5fae,
-};
+// coffret et rails ; les appareils eux-mêmes sont dans legrand.ts
+const C = { plastron: 0xe1e4e0, coffret: 0xc9cfcc, fond: 0xb9c0bd, rail: 0xc4cbcc, survol: 0x1f5fae };
 
 export function longueurVue(nbRangees: number) {
   return { largeur: LARG + 0.8, hauteur: nbRangees * PAS + 1.6 };
@@ -102,6 +98,8 @@ class Vue {
   private observateur: ResizeObserver;
   private bulle: HTMLDivElement;
   private direction: Vector3;
+  private atelier = new Atelier({ W, FENETRE, Z_FACE, Z_FOND });
+  private taille = { w: 0, h: 0 };
 
   constructor(private hote: HTMLElement, private grand: boolean) {
     this.renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
@@ -141,7 +139,12 @@ class Vue {
     this.controls.minAzimuthAngle = -1.15; this.controls.maxAzimuthAngle = 1.15;
     this.controls.minPolarAngle = 0.55; this.controls.maxPolarAngle = 2.05;
     this.controls.rotateSpeed = 0.7;
+    this.controls.zoomToCursor = grand;          // dans la grande vue, la molette zoome vers l'appareil visé
     this.controls.addEventListener('change', () => this.demander());
+    // dès qu'on tourne ou zoome, la bulle d'information n'est plus à sa place : on la cache
+    this.controls.addEventListener('start', () => {
+      this.eclairer(this.survole, false); this.survole = null; this.bulle.hidden = true;
+    });
 
     this.bulle = document.createElement('div');
     this.bulle.className = 'bulle-3d';
@@ -265,51 +268,11 @@ class Vue {
   }
 
   private appareil(m: Mod): Group {
-    const g = new Group();
-    const w = m.largeur * W - 0.07;
-    const corpsCoul = m.etat === 'ajoute' ? C.corpsAjoute : m.etat === 'inutile' ? C.corpsInutile : m.etat === 'fixe' ? C.corpsFixe : C.corps;
-    const est = (t: string) => m.rep.toUpperCase().includes(t);
-    const manCoul = m.etat === 'ajoute' ? C.manetteAjoute : m.etat === 'inutile' ? C.manetteInutile : est('IS ') ? C.manetteIs : C.manette;
-
-    const mCorps = this.mat({ color: corpsCoul, roughness: 0.5 });
-    const mNez = this.mat({ color: corpsCoul, roughness: 0.38 });
-    const mMan = this.mat({ color: manCoul, roughness: 0.32 });
-
-    const corps = new Mesh(this.geo(`corps${m.largeur}`, () => new RoundedBoxGeometry(w, 8.4, Z_FACE - (Z_FOND + 1), 2, 0.14)), mCorps);
-    corps.position.z = (Z_FACE + Z_FOND + 1) / 2;
-    const nez = new Mesh(this.geo(`nez${m.largeur}`, () => new RoundedBoxGeometry(w, FENETRE - 0.12, 1.75, 2, 0.16)), mNez);
-    nez.position.z = Z_FACE + 0.85;
-    corps.castShadow = corps.receiveShadow = nez.castShadow = nez.receiveShadow = true;
-    g.add(corps, nez);
-
-    const zAvant = Z_FACE + 1.72;
-    if (est('HORLOGE')) {
-      const ecran = new Mesh(this.geo('ecran', () => new BoxGeometry(w * 0.7, 1.4, 0.12)), this.mat({ color: C.ecran, roughness: 0.15, metalness: 0.1 }));
-      ecran.position.set(0, 0.5, zAvant + 0.05);
-      g.add(ecran);
-    } else {
-      const largeMan = m.largeur === 2 ? 1.25 : 0.72;
-      const man = new Mesh(this.geo(`man${largeMan}`, () => new RoundedBoxGeometry(largeMan, 1.5, 1.1, 2, 0.12)), mMan);
-      man.position.set(m.largeur === 2 && !est('IS ') ? -w / 4 : 0, 0.45, zAvant + 0.4);
-      man.castShadow = true;
-      g.add(man);
-      if (m.largeur === 2 && !est('IS ')) {
-        const test = new Mesh(this.geo('test', () => new RoundedBoxGeometry(0.75, 0.75, 0.3, 1, 0.08)), this.mat({ color: C.test, roughness: 0.4 }));
-        test.position.set(w / 4, -0.9, zAvant + 0.1);
-        g.add(test);
-      }
-    }
-    // petite bande d'accent sur le dessus du nez pour les appareils à ajouter
-    if (m.etat === 'ajoute') {
-      const bande = new Mesh(this.geo(`bande${m.largeur}`, () => new BoxGeometry(w - 0.2, 0.08, 1.2)), this.mat({ color: C.manetteAjoute, roughness: 0.4, emissive: C.manetteAjoute, emissiveIntensity: 0.25 }));
-      bande.position.set(0, (FENETRE - 0.12) / 2 + 0.03, Z_FACE + 0.95);
-      g.add(bande);
-    }
-
-    const mats = [mCorps, mNez];
-    g.userData = { mod: m, mats, base: mats.map((x) => x.emissive.clone()) };
-    this.cibles.push(g);
-    return g;
+    const { groupe, surbrillance } = this.atelier.fabriquer(m);
+    this.jetables.push(...surbrillance);
+    groupe.userData = { mod: m, mats: surbrillance, base: surbrillance.map((x) => x.emissive.clone()) };
+    this.cibles.push(groupe);
+    return groupe;
   }
 
   // ---- interaction
@@ -372,11 +335,13 @@ class Vue {
 
   private redimensionner() {
     const w = this.hote.clientWidth, h = this.hote.clientHeight;
-    if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
+    if (!w || !h || (w === this.taille.w && h === this.taille.h)) return;
+    this.taille = { w, h };
+    this.renderer.setSize(w, h, false);   // vide le canevas : on redessine aussitôt, sans attendre l'image suivante
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this.contenu.children.length) this.recadrer();
+    this.renderer.render(this.scene, this.camera);
   }
 
   // ---- rendu à la demande
@@ -406,6 +371,7 @@ class Vue {
     this.controls.dispose();
     for (const j of this.jetables) j.dispose();
     for (const g of this.geos.values()) g.dispose();
+    this.atelier.dispose();
     this.renderer.dispose();
     el.remove(); this.bulle.remove();
   }

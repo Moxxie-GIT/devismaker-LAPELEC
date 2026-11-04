@@ -383,6 +383,7 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .cote {
   border-left: 1px solid var(--trait); background: var(--surface); padding: 20px 18px 40px;
   position: sticky; top: 52px; height: calc(100vh - 52px); overflow: auto;
+  scrollbar-gutter: stable;   /* la barre de défilement ne doit pas changer la largeur de la vue 3D */
 }
 .surtitre { display: block; font-size: var(--t-11); font-weight: 600; color: var(--encre-3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 2px; }
 .cote h2 { margin-bottom: 2px; }
