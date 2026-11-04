@@ -1,6 +1,7 @@
 // Éditeur d'un devis : navigation par pièce, enregistrement automatique, calcul en direct.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Devis, Piece } from '../../shared/types';
+import type { Devis, Piece, Resultat } from '../../shared/types';
+import { Icone } from '../lib/icones';
 import { LOTS } from '../../shared/lots';
 import { ORDRE_TYPES, TYPES_PIECES, dupliquerPiece, nouvellePiece } from '../../shared/lots/cfo/pieces';
 import { ErreurApi, get, post, put } from '../lib/api';
@@ -150,9 +151,11 @@ export function Editeur({ id }: { id: string }) {
   return (
     <>
       <Barre>
-        <span className="fil"><span>Devis</span><b title={devis.titre}>{devis.titre}</b></span>
-        <span className={`etat${etat === 'erreur' || etat === 'conflit' ? ' alerte' : ''}`} aria-live="polite">{texteEtat}</span>
-        <button className="btn-barre" onClick={() => setSelection('export')}>
+        <span className="separateur" aria-hidden="true" />
+        <span className="fil"><b title={devis.titre}>{devis.titre}</b>{devis.client && <span className="client">{devis.client}</span>}</span>
+        <span className={`etat etat-${etat}${etat === 'erreur' || etat === 'conflit' ? ' alerte' : ''}`} aria-live="polite"><i className="voyant" aria-hidden="true" />{texteEtat}</span>
+        <button className={`btn-barre action${nbErreurs ? ' a-corriger' : ''}`} onClick={() => setSelection('export')}>
+          <Icone nom={nbErreurs ? 'alerte' : 'telecharger'} />
           {nbErreurs ? `Vérifier (${nbErreurs} à corriger)` : 'Vérifier et exporter'}
         </button>
       </Barre>
@@ -160,15 +163,16 @@ export function Editeur({ id }: { id: string }) {
       <div className="editeur">
         <nav className="nav-pieces" aria-label="Pièces du devis">
           <button className="item" aria-current={selection === 'projet'} onClick={() => setSelection('projet')}>
-            <span className="nom">Projet</span>
+            <Icone nom="dossier" /><span className="nom">Projet</span>
           </button>
-          <div className="groupe">Pièces</div>
-          {data.pieces.length === 0 && <p className="petit discret" style={{ padding: '0 8px' }}>Aucune pièce pour l’instant.</p>}
+          <div className="groupe"><span>Pièces</span>{data.pieces.length > 0 && <span className="compte">{data.pieces.length}</span>}</div>
+          {data.pieces.length === 0 && <p className="petit discret" style={{ padding: '0 10px' }}>Aucune pièce pour l’instant.</p>}
           {data.pieces.map((p) => {
             const al = alertesPiece(p.id);
             const niv = al.some((a) => a.niveau === 'erreur') ? 'erreur' : al.length ? 'attention' : '';
             return (
               <button key={p.id} className="item" aria-current={selection === p.id} onClick={() => setSelection(p.id)}>
+                <Icone nom="porte" />
                 <span className="nom">{p.nom || 'Sans nom'}</span>
                 {p.tableau.choix === 'TD' && <span className="tag">TD</span>}
                 {p.tableau.choix === 'TGBT' && <span className="tag tgbt">TGBT</span>}
@@ -176,16 +180,16 @@ export function Editeur({ id }: { id: string }) {
               </button>
             );
           })}
-          <button className="btn petit ajout" onClick={() => setAjout(true)}>Ajouter une pièce</button>
-          <div className="groupe">Fin du devis</div>
+          <button className="btn petit ajout" onClick={() => setAjout(true)}><Icone nom="plus" />Ajouter une pièce</button>
+          <div className="groupe"><span>Fin du devis</span></div>
           {data.mode === 'KNX' && (
             <button className="item" aria-current={selection === 'domotique'} onClick={() => setSelection('domotique')}>
-              <span className="nom">Domotique</span>{!data.domotique.actif && <span className="tag">non calculée</span>}
+              <Icone nom="puce" /><span className="nom">Domotique</span>{!data.domotique.actif && <span className="tag">non calculée</span>}
             </button>
           )}
-          <button className="item" aria-current={selection === 'divers'} onClick={() => setSelection('divers')}><span className="nom">Divers</span></button>
+          <button className="item" aria-current={selection === 'divers'} onClick={() => setSelection('divers')}><Icone nom="liste" /><span className="nom">Divers</span></button>
           <button className="item" aria-current={selection === 'export'} onClick={() => setSelection('export')}>
-            <span className="nom">Vérifier et exporter</span>{nbErreurs > 0 && <span className="point erreur" />}
+            <Icone nom="bouclier" /><span className="nom">Vérifier et exporter</span>{nbErreurs > 0 && <span className="compte erreur">{nbErreurs}</span>}
           </button>
         </nav>
 
@@ -201,7 +205,7 @@ export function Editeur({ id }: { id: string }) {
             </div>
           )}
 
-          {selection === 'projet' && <PanneauProjet devis={devis} modifier={modifier} />}
+          {selection === 'projet' && <PanneauProjet devis={devis} resultat={resultat} modifier={modifier} onSelection={setSelection} />}
           {piece && (
             <PanneauPiece
               key={piece.id} piece={piece} devis={devis} resultat={resultat} modifier={modifier}
@@ -224,12 +228,26 @@ export function Editeur({ id }: { id: string }) {
   );
 }
 
-function PanneauProjet({ devis, modifier }: { devis: Devis; modifier: Modifier }) {
+function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devis; resultat: Resultat; modifier: Modifier; onSelection: (s: string) => void }) {
   const [changementMode, setChangementMode] = useState<null | 'KNX' | 'CLASSIQUE'>(null);
+  const pieces = devis.data.pieces;
+  const points = pieces.reduce((a, p) => a + p.circuits.reduce((b, c) => b + c.nb, 0), 0);
+  const nbErreurs = resultat.alertes.filter((a) => a.niveau === 'erreur').length;
+  const blocs = new Set(resultat.lignes.map((l) => l.bloc)).size;
   return (
     <>
       <div className="titre-piece"><h1>Projet</h1></div>
+      <div className="resume-devis">
+        <div className="tuile"><Icone nom="porte" /><b className="num">{pieces.length}</b><span>pièce{pieces.length > 1 ? 's' : ''}</span></div>
+        <div className="tuile"><Icone nom="tableau" /><b className="num">{resultat.tableaux.length}</b><span>tableau{resultat.tableaux.length > 1 ? 'x' : ''}</span></div>
+        <div className="tuile"><Icone nom="ampoule" /><b className="num">{points}</b><span>points lumineux</span></div>
+        <div className="tuile"><Icone nom="fichier" /><b className="num">{resultat.lignes.length}</b><span>lignes, {blocs} bloc{blocs > 1 ? 's' : ''}</span></div>
+        <button className={`tuile cliquable${nbErreurs ? ' erreur' : ' ok'}`} onClick={() => onSelection('export')}>
+          <Icone nom={nbErreurs ? 'alerte' : 'coche'} /><b className="num">{nbErreurs || 'Prêt'}</b><span>{nbErreurs ? `point${nbErreurs > 1 ? 's' : ''} à corriger` : 'à exporter'}</span>
+        </button>
+      </div>
       <section className="section">
+        <header><h2>Informations</h2></header>
         <div className="formulaire-ligne">
           <div className="champ" style={{ flex: '2 1 280px' }}>
             <label htmlFor="p-titre">Titre du devis</label>

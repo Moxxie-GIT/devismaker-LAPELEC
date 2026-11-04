@@ -6,7 +6,7 @@ On décrit la villa pièce par pièce (éclairage, inters, prises, équipements,
 
 - Comptes utilisateurs (administrateur / utilisateur), plusieurs personnes en même temps sur des devis différents.
 - Enregistrement automatique, reprise à tout moment, duplication de devis et de pièces.
-- Calcul en direct : disjoncteurs des TD et du TGBT (dessinés sur un rail), modules KNX (TA2/TA4, RM, SM4, DM4T, DM4 DALI, JM4T).
+- Calcul en direct : disjoncteurs des TD et du TGBT, montrés en 3D (coffret, rails, plastron, que l’on fait tourner à la souris) ou en schéma 2D, modules KNX (TA2/TA4, RM, SM4, DM4T, DM4 DALI, JM4T).
 - Export `.xlsx` : feuille **IMPORT** à importer, plus **TABLEAUX À MODIFIER** et **DÉTAIL CALCUL** pour le contrôle.
 
 ## Installation sur TrueNAS

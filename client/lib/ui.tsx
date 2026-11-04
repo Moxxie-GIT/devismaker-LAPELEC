@@ -1,5 +1,6 @@
 // Petits composants d'interface réutilisables.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Icone } from './icones';
 
 export function Compteur({ valeur, onChange, min = 0, max = 9999, pas = 1, label }: {
   valeur: number; onChange: (n: number) => void; min?: number; max?: number; pas?: number; label?: string;
@@ -60,19 +61,25 @@ export function Segments<T extends string | number>({ valeur, options, onChange,
   );
 }
 
-export function Fenetre({ titre, children, onFermer }: { titre: string; children: ReactNode; onFermer: () => void }) {
+export function Fenetre({ titre, children, onFermer, large }: { titre: string; children: ReactNode; onFermer: () => void; large?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const fermer = useRef(onFermer);
+  fermer.current = onFermer;
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer(); };
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') fermer.current(); };
     window.addEventListener('keydown', k);
-    ref.current?.querySelector<HTMLElement>('input, button, select, textarea')?.focus();
+    // premier champ du contenu (pas le bouton de fermeture)
+    ref.current?.querySelector<HTMLElement>('.contenu-fenetre :is(input, select, textarea, button)')?.focus();
     return () => window.removeEventListener('keydown', k);
-  }, [onFermer]);
+  }, []);
   return (
     <div className="voile" onMouseDown={(e) => { if (e.target === e.currentTarget) onFermer(); }}>
-      <div className="fenetre" role="dialog" aria-modal="true" aria-label={titre} ref={ref}>
-        <h2>{titre}</h2>
-        {children}
+      <div className={`fenetre${large ? ' large' : ''}`} role="dialog" aria-modal="true" aria-label={titre} ref={ref}>
+        <div className="entete-fenetre">
+          <h2>{titre}</h2>
+          <button type="button" className="btn fantome icone" aria-label="Fermer" title="Fermer (Échap)" onClick={onFermer}><Icone nom="croix" /></button>
+        </div>
+        <div className="contenu-fenetre">{children}</div>
       </div>
     </div>
   );
@@ -101,7 +108,7 @@ export function ZoneToast() {
     afficherToast = (x) => { setT(x); clearTimeout(h); h = setTimeout(() => setT(null), 2600); };
     return () => { afficherToast = null; };
   }, []);
-  return t ? <div className="toast" role="status">{t}</div> : null;
+  return t ? <div className="toast" role="status"><Icone nom="coche" />{t}</div> : null;
 }
 
 export function dateCourte(iso: string): string {

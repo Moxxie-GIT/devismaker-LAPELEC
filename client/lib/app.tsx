@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Parametres, Utilisateur } from '../../shared/types';
 import { post, put } from './api';
 import { Fenetre, toast } from './ui';
+import { Icone } from './icones';
 
 export interface Ctx {
   utilisateur: Utilisateur;
@@ -66,21 +67,31 @@ export function Barre({ children }: { children?: ReactNode }) {
       {children}
       <span className="espace" />
       <div className="menu-util">
-        <button className="btn-barre" aria-haspopup="menu" aria-expanded={ouvert} onClick={() => setOuvert(!ouvert)}>{utilisateur.nom}</button>
+        <button className="btn-barre utilisateur" aria-haspopup="menu" aria-expanded={ouvert} onClick={() => setOuvert(!ouvert)}>
+          <Initiales nom={utilisateur.nom} />{utilisateur.nom}<Icone nom="chevron" taille={14} />
+        </button>
         {ouvert && (
           <div className="liste" role="menu">
-            <div className="qui"><b>{utilisateur.nom}</b><div className="petit discret">{utilisateur.login}{utilisateur.role === 'admin' ? ', administrateur' : ''}</div></div>
-            <button role="menuitem" onClick={() => naviguer('/')}>Tous les devis</button>
-            {utilisateur.role === 'admin' && <button role="menuitem" onClick={() => naviguer('/parametres')}>Utilisateurs et prix</button>}
-            <button role="menuitem" onClick={() => setMdp(true)}>Changer mon mot de passe</button>
-            <button role="menuitem" onClick={deconnecter}>Se déconnecter</button>
-            <div className="petit discret" style={{ padding: '8px 10px 2px', borderTop: '1px solid var(--trait)', marginTop: 4 }}>Version {version}</div>
+            <div className="qui"><Initiales nom={utilisateur.nom} grand /><div><b>{utilisateur.nom}</b><div className="petit discret">{utilisateur.login}{utilisateur.role === 'admin' ? ', administrateur' : ''}</div></div></div>
+            <button role="menuitem" onClick={() => naviguer('/')}><Icone nom="dossier" />Tous les devis</button>
+            {utilisateur.role === 'admin' && <button role="menuitem" onClick={() => naviguer('/parametres')}><Icone nom="utilisateurs" />Utilisateurs et prix</button>}
+            <button role="menuitem" onClick={() => setMdp(true)}><Icone nom="cle" />Changer mon mot de passe</button>
+            <button role="menuitem" onClick={deconnecter}><Icone nom="sortie" />Se déconnecter</button>
+            <div className="version">Version {version}</div>
           </div>
         )}
       </div>
       {mdp && <ChangerMotDePasse onFermer={() => setMdp(false)} />}
     </header>
   );
+}
+
+/** Pastille avec les initiales, couleur stable par personne. */
+export function Initiales({ nom, grand }: { nom: string; grand?: boolean }) {
+  const ini = nom.split(/\s+/).filter(Boolean).slice(0, 2).map((m) => m[0]?.toUpperCase()).join('') || '?';
+  let h = 0;
+  for (const c of nom) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return <span className={`initiales${grand ? ' grand' : ''}`} style={{ background: `hsl(${h} 38% 42%)` }} aria-hidden="true">{ini}</span>;
 }
 
 function ChangerMotDePasse({ onFermer }: { onFermer: () => void }) {

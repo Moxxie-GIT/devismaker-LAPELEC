@@ -5,6 +5,7 @@ import { CATALOGUE, LUMINAIRES } from '../../../shared/lots/cfo/catalogue';
 import { ORDRE_TYPES, TYPES_PIECES, nomCircuitParDefaut, nouveauCircuit, nouvelElement } from '../../../shared/lots/cfo/pieces';
 import { modulesPourInter } from '../../../shared/lots/cfo/moteur';
 import { Compteur, Confirmer, Segments } from '../../lib/ui';
+import { Icone, type NomIcone } from '../../lib/icones';
 import type { Modifier } from '../Editeur';
 
 const COMMANDES: [Circuit['commande'], string][] = [['onoff', 'On/off'], ['v110', 'Variation 1-10 V'], ['v230', 'Variation 230 V'], ['dali', 'DALI']];
@@ -36,9 +37,9 @@ export function PanneauPiece({ piece, devis, resultat, modifier, onSupprimee, on
           onChange={(e) => maj((p) => { p.nom = e.target.value; })}
         />
         <div className="actions">
-          <button className="btn fantome icone" title="Monter" aria-label="Monter la pièce" disabled={index === 0} onClick={() => deplacer(-1)}>↑</button>
-          <button className="btn fantome icone" title="Descendre" aria-label="Descendre la pièce" disabled={index === pieces.length - 1} onClick={() => deplacer(1)}>↓</button>
-          <button className="btn fantome petit danger" onClick={() => setSuppression(true)}>Supprimer</button>
+          <button className="btn fantome icone" title="Monter" aria-label="Monter la pièce" disabled={index === 0} onClick={() => deplacer(-1)}><Icone nom="haut" /></button>
+          <button className="btn fantome icone" title="Descendre" aria-label="Descendre la pièce" disabled={index === pieces.length - 1} onClick={() => deplacer(1)}><Icone nom="bas" /></button>
+          <button className="btn fantome petit danger" onClick={() => setSuppression(true)}><Icone nom="corbeille" />Supprimer</button>
         </div>
       </div>
       <div className="formulaire-ligne" style={{ marginBottom: 14 }}>
@@ -58,20 +59,20 @@ export function PanneauPiece({ piece, devis, resultat, modifier, onSupprimee, on
       <QuestionTableau piece={piece} pieces={pieces} maj={maj} conseil={type} />
 
       <section className="section">
-        <header><h2>Éclairage</h2><p>Un circuit = des points identiques commandés ensemble. Les lignes à 0 ne sont pas exportées.</p></header>
+        <header><h2><Titre icone="ampoule">Éclairage</Titre></h2><p>Un circuit = des points identiques commandés ensemble. Les lignes à 0 ne sont pas exportées.</p></header>
         <Circuits piece={piece} knx={knx} maj={maj} />
       </section>
 
       <section className="section">
         <header>
-          <h2>Commandes</h2>
+          <h2><Titre icone="interrupteur">Commandes</Titre></h2>
           <p>{knx ? 'Un inter = une plaque. Le nombre de boutons sert au calcul des TA2 / TA4.' : 'Interrupteurs classiques.'}</p>
         </header>
         {knx ? <CommandesKnx piece={piece} maj={maj} /> : <CommandesClassiques piece={piece} maj={maj} />}
       </section>
 
       <section className="section">
-        <header><h2>Prises et équipements</h2><p>Désignations modifiables, elles partent telles quelles dans Esabora.</p></header>
+        <header><h2><Titre icone="prise">Prises et équipements</Titre></h2><p>Désignations modifiables, elles partent telles quelles dans Esabora.</p></header>
         <Equipements piece={piece} maj={maj} />
       </section>
 
@@ -94,6 +95,10 @@ export function PanneauPiece({ piece, devis, resultat, modifier, onSupprimee, on
       )}
     </>
   );
+}
+
+function Titre({ icone, children }: { icone: NomIcone; children: string }) {
+  return <><span className="pastille-icone"><Icone nom={icone} /></span>{children}</>;
 }
 
 function QuestionTableau({ piece, pieces, maj, conseil }: {
@@ -216,7 +221,7 @@ function Circuits({ piece, knx, maj }: { piece: Piece; knx: boolean; maj: (fn: (
                       <option value="aucune">Sans pose</option>
                     </select>
                   </td>
-                  <td><button className="btn fantome icone" aria-label="Retirer le circuit" title="Retirer" onClick={() => maj((p) => { p.circuits = p.circuits.filter((x) => x.id !== c.id); })}>×</button></td>
+                  <td><button className="btn fantome icone" aria-label="Retirer le circuit" title="Retirer" onClick={() => maj((p) => { p.circuits = p.circuits.filter((x) => x.id !== c.id); })}><Icone nom="croix" /></button></td>
                 </tr>
               );
             })}
@@ -224,7 +229,7 @@ function Circuits({ piece, knx, maj }: { piece: Piece; knx: boolean; maj: (fn: (
         </table></div>
       )}
       <div className="pied-section">
-        <button className="btn petit" onClick={() => maj((p) => { p.circuits.push(nouveauCircuit('spot', p.type, 1)); })}>Ajouter un circuit</button>
+        <button className="btn petit" onClick={() => maj((p) => { p.circuits.push(nouveauCircuit('spot', p.type, 1)); })}><Icone nom="plus" />Ajouter un circuit</button>
         <span className="petit discret">
           {piece.circuits.reduce((a, c) => a + c.nb, 0)} point(s) lumineux
         </span>
@@ -243,10 +248,10 @@ function CommandesKnx({ piece, maj }: { piece: Piece; maj: (fn: (p: Piece) => vo
             <span className="n">Inter {i + 1}</span>
             <Compteur label={`Boutons de l’inter ${i + 1}`} valeur={n} min={1} max={32} onChange={(v) => maj((p) => { p.inters[i] = v; })} />
             <span className="petit discret">bouton{n > 1 ? 's' : ''}</span>
-            <button className="btn fantome icone" aria-label={`Retirer l’inter ${i + 1}`} onClick={() => maj((p) => { p.inters.splice(i, 1); })}>×</button>
+            <button className="btn fantome icone" aria-label={`Retirer l’inter ${i + 1}`} onClick={() => maj((p) => { p.inters.splice(i, 1); })}><Icone nom="croix" /></button>
           </span>
         ))}
-        <button className="btn petit" onClick={() => maj((p) => { p.inters.push(2); })}>Ajouter un inter</button>
+        <button className="btn petit" onClick={() => maj((p) => { p.inters.push(2); })}><Icone nom="plus" />Ajouter un inter</button>
       </div>
       <div className="formulaire-ligne" style={{ marginTop: 12 }}>
         <div className="champ" style={{ flex: '0 0 auto' }}>
@@ -293,7 +298,7 @@ function Equipements({ piece, maj }: { piece: Piece; maj: (fn: (p: Piece) => voi
                 <tr key={e.id} className={e.quantite > 0 ? '' : 'nul'}>
                   <td className="l"><input aria-label="Désignation" value={e.designation} onChange={(ev) => maj((p) => { const x = p.elements.find((y) => y.id === e.id); if (x) x.designation = ev.target.value; })} /></td>
                   <td><Compteur label={e.designation} valeur={e.quantite} onChange={(n) => maj((p) => { const x = p.elements.find((y) => y.id === e.id); if (x) x.quantite = n; })} /></td>
-                  <td><button className="btn fantome icone" aria-label="Retirer" title="Retirer" onClick={() => maj((p) => { p.elements = p.elements.filter((y) => y.id !== e.id); })}>×</button></td>
+                  <td><button className="btn fantome icone" aria-label="Retirer" title="Retirer" onClick={() => maj((p) => { p.elements = p.elements.filter((y) => y.id !== e.id); })}><Icone nom="croix" /></button></td>
                 </tr>
               )),
             ])}

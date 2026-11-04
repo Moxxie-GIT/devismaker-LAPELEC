@@ -121,10 +121,21 @@ mkdirSync(DOSSIER, { recursive: true });
   await p.waitForSelector('.cote h2:has-text("TD Chambre 1")');
   await cap('12-apres-rechargement', true);
 
-  // vue mobile
-  await p.setViewportSize({ width: 390, height: 844 });
+  // vue 3D du tableau (chargée à la demande), puis la fenêtre « Tableaux du devis »
+  await p.waitForSelector('.coffret-3d canvas');
+  await p.click('text=Agrandir');
+  await p.waitForSelector('.fenetre.large .coffret-3d canvas');
+  await p.waitForTimeout(600);
+  await cap('13-tableaux-3d');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('.fenetre', { state: 'detached' });
+
+  // portable 1280 px : la saisie de l'éclairage tient sans défilement horizontal
+  await p.setViewportSize({ width: 1280, height: 720 });
   await p.waitForTimeout(200);
-  await cap('13-mobile', true);
+  const deborde = await p.evaluate(() => { const d = document.querySelector('.defile'); return d.scrollWidth > d.clientWidth; });
+  assert.equal(deborde, false);
+  await cap('14-portable');
 
   console.log('erreurs console :', erreurs.length ? erreurs : 'aucune');
   assert.equal(erreurs.length, 0);

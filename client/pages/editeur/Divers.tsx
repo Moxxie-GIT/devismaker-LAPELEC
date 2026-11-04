@@ -2,6 +2,7 @@ import type { Devis } from '../../../shared/types';
 import { uid } from '../../../shared/lots/cfo/pieces';
 import { useApp } from '../../lib/app';
 import { ChampNombre, Compteur } from '../../lib/ui';
+import { Icone } from '../../lib/icones';
 import type { Modifier } from '../Editeur';
 
 export function PanneauDivers({ devis, modifier }: { devis: Devis; modifier: Modifier }) {
@@ -30,14 +31,14 @@ export function PanneauDivers({ devis, modifier }: { devis: Devis; modifier: Mod
                   <td><ChampNombre label="Prix d’achat" valeur={l.pu} requis={l.quantite > 0} onChange={(n) => maj(l.id, (x) => { x.pu = n; })} /></td>
                   <td><ChampNombre label="Coefficient matériel" largeur={70} valeur={l.coefMat} onChange={(n) => maj(l.id, (x) => { x.coefMat = n; })} placeholder="1" /></td>
                   <td><ChampNombre label="Heures" largeur={70} valeur={l.heures} requis={l.quantite > 0} onChange={(n) => maj(l.id, (x) => { x.heures = n; })} /></td>
-                  <td><button className="btn fantome icone" aria-label="Retirer la ligne" onClick={() => modifier((d) => { d.data.divers = d.data.divers.filter((x) => x.id !== l.id); })}>×</button></td>
+                  <td><button className="btn fantome icone" aria-label="Retirer la ligne" onClick={() => modifier((d) => { d.data.divers = d.data.divers.filter((x) => x.id !== l.id); })}><Icone nom="croix" /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
         <div className="pied-section">
-          <button className="btn petit" onClick={() => ajouter('')}>Ajouter une ligne</button>
+          <button className="btn petit" onClick={() => ajouter('')}><Icone nom="plus" />Ajouter une ligne</button>
           <select aria-label="Ajouter une ligne habituelle" value="" onChange={(e) => { if (e.target.value) ajouter(e.target.value); }}>
             <option value="">Ajouter une ligne habituelle…</option>
             {params.diversModeles.map((m) => <option key={m} value={m}>{m.slice(0, 90)}</option>)}

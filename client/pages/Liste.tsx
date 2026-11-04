@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Devis, DevisResume } from '../../shared/types';
 import { del, get, post } from '../lib/api';
-import { Barre, useApp } from '../lib/app';
+import { Barre, Initiales, useApp } from '../lib/app';
+import { Icone } from '../lib/icones';
 import { Confirmer, Fenetre, dateCourte, toast } from '../lib/ui';
 
 type Ligne = DevisResume & { presents: string[] };
@@ -36,10 +37,10 @@ export function Liste() {
       <main className="page">
         <div className="entete-page">
           <div>
-            <h1>Devis</h1>
+            <h1>Devis{liste && liste.length > 0 && <span className="compte-titre">{liste.length}</span>}</h1>
             <p className="discret">Chaque devis génère le fichier à importer dans Esabora.</p>
           </div>
-          <button className="btn primaire" onClick={() => setCreation(true)}>Nouveau devis</button>
+          <button className="btn primaire" onClick={() => setCreation(true)}><Icone nom="plus" />Nouveau devis</button>
         </div>
         {erreur && <div className="message erreur" style={{ marginBottom: 12 }}>{erreur}</div>}
         {!(params.tauxMo > 0) && (
@@ -52,36 +53,42 @@ export function Liste() {
         )}
         <div className="bloc">
           <header>
-            <input type="text" placeholder="Rechercher un titre, un client…" value={filtre} onChange={(e) => setFiltre(e.target.value)} style={{ flex: '1 1 260px', maxWidth: 360 }} aria-label="Rechercher" />
-            <label className="petit" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="checkbox" checked={mesDevis} onChange={(e) => setMesDevis(e.target.checked)} /> Seulement mes devis
-            </label>
+            <span className="recherche">
+              <Icone nom="recherche" />
+              <input type="text" placeholder="Rechercher un titre, un client…" value={filtre} onChange={(e) => setFiltre(e.target.value)} aria-label="Rechercher" />
+            </span>
+            <SegmentsFiltre mesDevis={mesDevis} onChange={setMesDevis} />
           </header>
           {liste === null ? <div className="vide">Chargement…</div> : visibles.length === 0 ? (
             <div className="vide">
-              {liste.length === 0 ? (<><h3>Aucun devis pour l’instant</h3><p>Crée le premier : tu ajouteras ensuite les pièces une par une.</p></>)
+              {liste.length === 0 ? (<><span className="vide-icone"><Icone nom="fichier" taille={28} /></span><h3>Aucun devis pour l’instant</h3><p>Crée le premier : tu ajouteras ensuite les pièces une par une.</p></>)
                 : <p>Aucun devis ne correspond à la recherche.</p>}
             </div>
           ) : (
             <table className="liste">
               <thead>
-                <tr><th>Devis</th><th className="masquer-mobile">Pièces</th><th className="masquer-mobile">Créé par</th><th>Dernière modification</th><th aria-label="Actions" /></tr>
+                <tr><th>Devis</th><th className="num">Pièces</th><th>Créé par</th><th>Dernière modification</th><th aria-label="Actions" /></tr>
               </thead>
               <tbody>
                 {visibles.map((d) => (
                   <tr key={d.id} className="cliquable" onClick={() => naviguer(`/devis/${d.id}`)}>
                     <td>
-                      <div className="titre-devis">{d.titre}</div>
-                      <div className="petit discret">{[d.client, d.reference && `n° ${d.reference}`].filter(Boolean).join(', ') || 'Client non renseigné'}</div>
-                      {d.presents.length > 0 && <span className="pastille" style={{ marginTop: 4 }}>Ouvert par {d.presents.join(', ')}</span>}
+                      <div className="cellule-devis">
+                        <span className="icone-devis"><Icone nom="fichier" /></span>
+                        <div>
+                          <div className="titre-devis">{d.titre}</div>
+                          <div className="petit discret">{[d.client, d.reference && `n° ${d.reference}`].filter(Boolean).join(', ') || 'Client non renseigné'}</div>
+                          {d.presents.length > 0 && <span className="pastille present" style={{ marginTop: 4 }}><i className="voyant" />Ouvert par {d.presents.join(', ')}</span>}
+                        </div>
+                      </div>
                     </td>
-                    <td className="num masquer-mobile">{d.nbPieces}</td>
-                    <td className="masquer-mobile">{d.createdBy}</td>
+                    <td className="num">{d.nbPieces}</td>
+                    <td><span className="qui-cellule"><Initiales nom={d.createdBy} />{d.createdBy}</span></td>
                     <td><span className="petit">{dateCourte(d.updatedAt)}</span><div className="petit discret">par {d.updatedBy}</div></td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                      <button className="btn fantome petit" onClick={() => dupliquer(d)}>Dupliquer</button>
+                    <td className="actions-ligne" onClick={(e) => e.stopPropagation()}>
+                      <button className="btn fantome petit" onClick={() => dupliquer(d)} title="Dupliquer le devis"><Icone nom="copie" />Dupliquer</button>
                       {(d.createdBy === utilisateur.nom || utilisateur.role === 'admin') &&
-                        <button className="btn fantome petit" onClick={() => setASupprimer(d)}>Supprimer</button>}
+                        <button className="btn fantome petit danger" onClick={() => setASupprimer(d)} title="Supprimer le devis"><Icone nom="corbeille" />Supprimer</button>}
                     </td>
                   </tr>
                 ))}
@@ -103,6 +110,15 @@ export function Liste() {
         />
       )}
     </>
+  );
+}
+
+function SegmentsFiltre({ mesDevis, onChange }: { mesDevis: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <span className="segments" role="group" aria-label="Filtrer les devis">
+      <button type="button" aria-pressed={!mesDevis} onClick={() => onChange(false)}>Tous les devis</button>
+      <button type="button" aria-pressed={mesDevis} onClick={() => onChange(true)}>Seulement mes devis</button>
+    </span>
   );
 }
 

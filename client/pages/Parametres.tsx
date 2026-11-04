@@ -3,8 +3,9 @@ import type { Parametres as P, Utilisateur } from '../../shared/types';
 import { ORDRE_DOMOTIQUE } from '../../shared/lots/cfo/catalogue';
 import { fusionnerParametres } from '../../shared/lots';
 import { get, post, put } from '../lib/api';
-import { Barre, useApp } from '../lib/app';
+import { Barre, Initiales, useApp } from '../lib/app';
 import { ChampNombre, Fenetre, Segments, toast } from '../lib/ui';
+import { Icone } from '../lib/icones';
 
 export function Parametres() {
   const { utilisateur } = useApp();
@@ -38,14 +39,14 @@ function Utilisateurs() {
   };
   return (
     <div className="bloc">
-      <header><h2>Comptes</h2><button className="btn primaire petit" onClick={() => setCreation(true)}>Créer un compte</button></header>
+      <header><h2>Comptes</h2><button className="btn primaire petit" onClick={() => setCreation(true)}><Icone nom="plus" />Créer un compte</button></header>
       {erreur && <div className="message erreur" style={{ margin: 12 }}>{erreur}</div>}
       <table className="liste">
         <thead><tr><th>Nom</th><th>Identifiant</th><th>Rôle</th><th aria-label="Actions" /></tr></thead>
         <tbody>
           {liste.map((u) => (
             <tr key={u.id}>
-              <td><b>{u.nom}</b>{!u.actif && <> <span className="pastille inactif">désactivé</span></>}</td>
+              <td><span className="qui-cellule"><Initiales nom={u.nom} /><b>{u.nom}</b>{!u.actif && <span className="pastille inactif">désactivé</span>}</span></td>
               <td>{u.login}</td>
               <td>
                 <select aria-label={`Rôle de ${u.nom}`} value={u.role} onChange={(e) => modifierU(u, { role: e.target.value as Utilisateur['role'] })}>
@@ -137,10 +138,10 @@ function Prix() {
         <div className="corps">
           <p className="discret" style={{ marginBottom: 10 }}>Les prix ne sont pas dans le code de l’outil : ils sont enregistrés uniquement dans la base du serveur. Tu peux les sauvegarder dans un fichier ou les recharger depuis un fichier.</p>
           <div className="pied-section">
-            <label className="btn">Importer un fichier de prix…
+            <label className="btn"><Icone nom="nuage" />Importer un fichier de prix…
               <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) importer(f); e.target.value = ''; }} />
             </label>
-            <button className="btn" onClick={exporter}>Exporter les prix</button>
+            <button className="btn" onClick={exporter}><Icone nom="telecharger" />Exporter les prix</button>
           </div>
         </div>
       </div>
@@ -174,7 +175,7 @@ function Prix() {
         <header><h2>Lignes Divers proposées</h2><p className="petit discret">Une par ligne. Elles sont ajoutées à chaque nouveau devis, prix et heures à renseigner.</p></header>
         <div className="corps"><textarea style={{ width: '100%', minHeight: 150 }} value={modeles} onChange={(e) => setModeles(e.target.value)} /></div>
       </div>
-      <div className="pied-section" style={{ marginTop: 16 }}><button className="btn primaire" onClick={enregistrer}>Enregistrer les prix</button></div>
+      <div className="barre-enregistrer"><span className="petit discret">Les prix s’appliquent à tous les devis dès l’enregistrement.</span><button className="btn primaire" onClick={enregistrer}><Icone nom="coche" />Enregistrer les prix</button></div>
     </>
   );
 }

@@ -1,83 +1,121 @@
-// Panneau de droite : le tableau qui alimente la pièce, dessiné comme un coffret sur rail DIN.
+// Panneau de droite : le tableau qui alimente la pièce, en 3D (coffret sur rails DIN) ou en schéma 2D.
+import { Component, Suspense, lazy, useState, type ReactNode } from 'react';
 import type { Devis, Piece, Resultat, TableauCalcule } from '../../../shared/types';
-import { MODULES_PROTECTION, TABLEAUX } from '../../../shared/lots/cfo/catalogue';
+import { disposition } from '../../lib/coffret';
+import { Icone } from '../../lib/icones';
+import { Fenetre, Segments } from '../../lib/ui';
 
-const REPERE: Record<string, string> = { C10: 'C10', C16: 'C16', C20: 'C20', C32: 'C32', D32: 'C32\n300mA', D40: 'C40\n300mA', IDAC: 'ID\nAC', IDA: 'ID\nA' };
-const PAR_RANGEE = 13;
+const Coffret3D = lazy(() => import('./Coffret3D'));
 
-interface Mod { rep: string; largeur: number; etat: '' | 'ajoute' | 'inutile' | 'fixe' | 'libre' }
-
-function modules(t: TableauCalcule): Mod[] {
-  const m = TABLEAUX[t.modele];
-  const out: Mod[] = (m?.fixes ?? []).map((f) => ({ rep: f.label, largeur: f.modules, etat: 'fixe' }));
-  const ordre = ['IDAC', 'IDA', 'D32', 'D40', 'C10', 'C16', 'C20', 'C32'];
-  for (const k of ordre) {
-    const p = t.protections.find((x) => x.cle === k);
-    if (!p) continue;
-    for (let i = 0; i < p.final; i++) {
-      const etat = i >= p.base ? 'ajoute' : i >= p.besoin ? 'inutile' : '';
-      out.push({ rep: REPERE[k] ?? k, largeur: MODULES_PROTECTION[k] ?? 1, etat });
-    }
-  }
-  return out;
+type Mode = '3d' | '2d';
+const CLE_MODE = 'lapelec.vue-tableau';
+function modeEnregistre(): Mode {
+  try { return localStorage.getItem(CLE_MODE) === '2d' ? '2d' : '3d'; } catch { return '3d'; }
 }
 
-function rangees(mods: Mod[], capacite?: number): Mod[][] {
-  const r: Mod[][] = [];
-  let cur: Mod[] = []; let n = 0;
-  for (const m of mods) {
-    if (n + m.largeur > PAR_RANGEE) { r.push(cur); cur = []; n = 0; }
-    cur.push(m); n += m.largeur;
-  }
-  if (cur.length) r.push(cur);
-  if (capacite) {
-    const nbR = Math.max(Math.ceil(capacite / PAR_RANGEE), r.length);
-    while (r.length < nbR) r.push([]);
-    for (const ligne of r) {
-      let l = ligne.reduce((a, m) => a + m.largeur, 0);
-      while (l < PAR_RANGEE) { ligne.push({ rep: '', largeur: 1, etat: 'libre' }); l++; }
-    }
-  }
-  return r;
+/** Si la 3D ne peut pas se charger (WebGL absent, fichier introuvable), on retombe sur le schéma 2D. */
+class SecoursVue extends Component<{ secours: ReactNode; children: ReactNode }, { erreur: boolean }> {
+  state = { erreur: false };
+  static getDerivedStateFromError() { return { erreur: true }; }
+  render() { return this.state.erreur ? this.props.secours : this.props.children; }
+}
+
+export function Vue3D({ t, grand }: { t: TableauCalcule; grand?: boolean }) {
+  const [echec, setEchec] = useState(false);
+  const secours = (
+    <>
+      <p className="petit discret" style={{ marginBottom: 8 }}>La vue 3D n’est pas disponible sur ce poste : schéma 2D affiché.</p>
+      <SchemaTableau t={t} />
+    </>
+  );
+  if (echec) return secours;
+  return (
+    <SecoursVue secours={secours}>
+      <Suspense fallback={<div className={`coffret-3d chargement${grand ? ' grand' : ''}`}>Chargement de la vue 3D…</div>}>
+        <Coffret3D t={t} grand={grand} onErreur={() => setEchec(true)} />
+      </Suspense>
+    </SecoursVue>
+  );
 }
 
 export function SchemaTableau({ t }: { t: TableauCalcule }) {
-  const m = TABLEAUX[t.modele];
-  const mods = modules(t);
-  const utilises = mods.reduce((a, x) => a + x.largeur, 0);
-  const cap = m?.capacite;
-  const pct = cap ? Math.round((utilises / cap) * 100) : 0;
+  const { rangees, utilises } = disposition(t);
   return (
-    <>
-      <div className="coffret" role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules`}>
-        {rangees(mods, cap).map((r, i) => (
-          <div className="rangee" key={i}>
-            {r.map((x, j) => (
-              <div key={j} className={`module${x.largeur === 2 ? ' x2' : ''} ${x.etat}`} title={x.rep}>
-                <span className="rep">{x.rep}</span><span className="manette" /><span />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="legende">
-        <span><i />Inclus dans l’ensemble</span>
-        <span><i className="ajoute" />À ajouter dans l’ensemble</span>
-        <span><i className="inutile" />Facturé, non utilisé</span>
-      </div>
-      {cap ? (
-        <div className="remplissage">
-          {utilises} modules sur {cap} ({pct} %)
-          <div className={`jauge${pct > 80 ? ' haut' : ''}`}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
-          {pct > 80 && <p className="petit" style={{ marginTop: 4, color: 'var(--attention)' }}>Moins de 20 % de réserve : prévoir un coffret plus grand.</p>}
+    <div className="coffret" role="img" aria-label={`Schéma de ${t.nom} : ${utilises} modules`}>
+      {rangees.map((r, i) => (
+        <div className="rangee" key={i}>
+          {r.map((x, j) => (
+            <div key={j} className={`module${x.largeur === 2 ? ' x2' : ''} ${x.etat}`} title={x.nom || x.rep}>
+              <span className="rep">{x.rep}</span><span className="manette" /><span />
+            </div>
+          ))}
         </div>
-      ) : null}
-    </>
+      ))}
+    </div>
+  );
+}
+
+function Legende() {
+  return (
+    <div className="legende">
+      <span><i />Inclus dans l’ensemble</span>
+      <span><i className="ajoute" />À ajouter</span>
+      <span><i className="inutile" />Facturé, non utilisé</span>
+    </div>
+  );
+}
+
+function Remplissage({ t }: { t: TableauCalcule }) {
+  const { utilises, capacite, pct } = disposition(t);
+  if (!capacite) return <p className="remplissage discret">{utilises} modules occupés</p>;
+  return (
+    <div className="remplissage">
+      <div className="ligne-remplissage"><span>{utilises} modules sur {capacite}</span><b className="num">{pct} %</b></div>
+      <div className={`jauge${pct > 80 ? ' haut' : ''}`}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
+      {pct > 80 && <p className="petit" style={{ marginTop: 4, color: 'var(--attention)' }}>Moins de 20 % de réserve : prévoir un coffret plus grand.</p>}
+    </div>
+  );
+}
+
+function VueTableau({ t, onAgrandir }: { t: TableauCalcule; onAgrandir: () => void }) {
+  const [mode, setModeLocal] = useState<Mode>(modeEnregistre);
+  const setMode = (m: Mode) => { setModeLocal(m); try { localStorage.setItem(CLE_MODE, m); } catch { /* navigation privée */ } };
+  return (
+    <div className="vue-tableau">
+      <div className="vue-outils">
+        <Segments<Mode> petit label="Affichage du tableau" valeur={mode} options={[['3d', '3D'], ['2d', 'Schéma']]} onChange={setMode} />
+        <button className="btn fantome petit" onClick={onAgrandir} title="Voir les tableaux du devis en grand"><Icone nom="agrandir" />Agrandir</button>
+      </div>
+      {mode === '3d' ? <Vue3D t={t} /> : <SchemaTableau t={t} />}
+      {mode === '3d' && <p className="aide-3d">Glisser pour tourner, double-clic pour recentrer. Survole un appareil pour son détail.</p>}
+      <Legende />
+      <Remplissage t={t} />
+    </div>
+  );
+}
+
+function AFaire({ t, resultat }: { t: TableauCalcule; resultat: Resultat }) {
+  const aModifier = resultat.aModifier.find((a) => a.tableau === t.nom);
+  return (
+    <div className="a-faire">
+      <h3>Après l’import dans Esabora</h3>
+      {aModifier ? (
+        <table>
+          <tbody>
+            {aModifier.changements.map((c) => (
+              <tr key={c.cle}><td>{c.label}<div className="discret">{c.ref}</div></td><td className="q">{c.base} → <b>{c.final}</b></td></tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="petit discret ok"><Icone nom="coche" />Rien à changer : l’ensemble {t.ensemble} suffit tel quel.</p>}
+    </div>
   );
 }
 
 export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; resultat: Resultat; piece?: Piece; onSelection: (s: string) => void }) {
-  if (!piece) return <aside className="cote"><VueTableaux resultat={resultat} onSelection={onSelection} /></aside>;
+  const [grand, setGrand] = useState<string | null>(null);
+  const fenetre = grand && <TableauxEnGrand resultat={resultat} initial={grand} onFermer={() => setGrand(null)} onSelection={(s) => { setGrand(null); onSelection(s); }} />;
+  if (!piece) return <aside className="cote"><VueTableaux resultat={resultat} onSelection={onSelection} onAgrandir={setGrand} />{fenetre}</aside>;
 
   const choix = piece.tableau.choix;
   const t = choix === 'TD' ? resultat.tableaux.find((x) => x.id === piece.id)
@@ -85,30 +123,33 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
       : choix === 'AUCUN' ? resultat.tableaux.find((x) => x.id === piece.tableau.alimentePar) ?? resultat.tableaux.find((x) => x.id === 'TGBT')
         : undefined;
 
-  if (!choix) {
+  if (!choix || !t) {
     return (
       <aside className="cote">
-        <h2>Tableau</h2>
-        <p className="sous">Indique s’il y a un TD dans la pièce : le calcul des disjoncteurs apparaîtra ici.</p>
-      </aside>
-    );
-  }
-  if (!t) {
-    return (
-      <aside className="cote">
-        <h2>Tableau</h2>
-        <p className="sous">Aucun TGBT dans le devis pour l’instant. Indique la pièce qui le porte (en général le local technique).</p>
+        <span className="surtitre">Tableau</span>
+        <h2>Pas encore de tableau</h2>
+        <div className="cote-vide">
+          <Icone nom="tableau" taille={28} />
+          <p>{!choix
+            ? 'Indique s’il y a un TD dans la pièce : le calcul des disjoncteurs apparaîtra ici.'
+            : 'Aucun TGBT dans le devis pour l’instant. Indique la pièce qui le porte (en général le local technique).'}</p>
+        </div>
       </aside>
     );
   }
   const porte = t.pieceId === piece.id;
-  const aModifier = resultat.aModifier.find((a) => a.tableau === t.nom);
   const modsKnx = Object.entries(t.modules).filter(([, n]) => n);
   return (
     <aside className="cote" aria-label={`Tableau ${t.nom}`}>
-      <h2>{t.nom}</h2>
+      <div className="cote-entete">
+        <div>
+          <span className="surtitre">{porte ? 'Tableau de la pièce' : 'Alimentée par'}</span>
+          <h2>{t.nom}</h2>
+        </div>
+        <span className="pastille code">{t.ensemble}</span>
+      </div>
       <p className="sous">
-        {porte ? `Dans cette pièce, ensemble ${t.ensemble}.` : <>Cette pièce est alimentée par ce tableau, situé dans <button className="lien" onClick={() => onSelection(t.pieceId)}>{t.bloc}</button>.</>}
+        {porte ? `Ensemble ${t.ensemble} dans cette pièce.` : <>Tableau situé dans <button className="lien" onClick={() => onSelection(t.pieceId)}>{t.bloc}</button>.</>}
       </p>
       {!t.calculable ? (
         <div className="message attention">Tableau tétra : le calcul des disjoncteurs n’est pas géré. À faire directement dans Esabora.</div>
@@ -119,19 +160,8 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
             <div><b>{t.socles}</b><span>socles de prises</span></div>
             <div><b>{t.circuits}</b><span>circuits</span></div>
           </div>
-          <SchemaTableau t={t} />
-          <div className="a-faire">
-            <h3>Après l’import dans Esabora</h3>
-            {aModifier ? (
-              <table>
-                <tbody>
-                  {aModifier.changements.map((c) => (
-                    <tr key={c.cle}><td>{c.label}<div className="discret">{c.ref}</div></td><td className="q">{c.base} → <b>{c.final}</b></td></tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <p className="petit discret">Rien à changer : l’ensemble {t.ensemble} suffit tel quel.</p>}
-          </div>
+          <VueTableau t={t} onAgrandir={() => setGrand(t.id)} />
+          <AFaire t={t} resultat={resultat} />
         </>
       )}
       {modsKnx.length > 0 && (
@@ -142,28 +172,82 @@ export function Cote({ devis, resultat, piece, onSelection }: { devis: Devis; re
           <ul>{t.rattachees.map((n) => <li key={n}>{n}</li>)}</ul>
         </div>
       )}
+      {fenetre}
     </aside>
   );
 }
 
-function VueTableaux({ resultat, onSelection }: { resultat: Resultat; onSelection: (s: string) => void }) {
+function VueTableaux({ resultat, onSelection, onAgrandir }: { resultat: Resultat; onSelection: (s: string) => void; onAgrandir: (id: string) => void }) {
+  const calculables = resultat.tableaux.filter((t) => t.calculable);
   return (
     <>
+      <span className="surtitre">Vue d’ensemble</span>
       <h2>Tableaux du devis</h2>
       <p className="sous">{resultat.tableaux.length ? 'Clique sur un tableau pour ouvrir la pièce qui le porte.' : 'Aucun tableau pour l’instant.'}</p>
-      <table className="liste">
-        <tbody>
+      {resultat.tableaux.length > 0 && (
+        <div className="cartes-tableaux">
           {resultat.tableaux.map((t) => {
             const m = resultat.aModifier.find((a) => a.tableau === t.nom);
             return (
-              <tr key={t.id} className="cliquable" onClick={() => onSelection(t.pieceId)}>
-                <td><b>{t.nom}</b><div className="petit discret">{t.ensemble}{t.calculable ? `, ${t.circuits} circuits` : ', tétra'}</div></td>
-                <td className="petit" style={{ textAlign: 'right' }}>{m ? `${m.changements.length} ligne${m.changements.length > 1 ? 's' : ''} à modifier` : t.calculable ? 'Minimum suffisant' : 'À faire dans Esabora'}</td>
-              </tr>
+              <button key={t.id} className="carte-tableau" onClick={() => onSelection(t.pieceId)}>
+                <Icone nom="tableau" taille={18} />
+                <span className="txt">
+                  <b>{t.nom}</b>
+                  <span className="petit discret">{t.ensemble}{t.calculable ? `, ${t.circuits} circuits` : ', tétra'}</span>
+                </span>
+                <span className={`etat-tableau${m ? ' a-modifier' : ''}`}>
+                  {m ? `${m.changements.length} à modifier` : t.calculable ? 'Suffisant' : 'Esabora'}
+                </span>
+              </button>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+      )}
+      {calculables.length > 0 && (
+        <button className="btn bloc-3d" onClick={() => onAgrandir(calculables[0].id)}><Icone nom="cube" />Voir les tableaux en 3D</button>
+      )}
     </>
+  );
+}
+
+/** Fenêtre large : tous les tableaux calculables du devis, en 3D, avec leurs changements. */
+function TableauxEnGrand({ resultat, initial, onFermer, onSelection }: { resultat: Resultat; initial: string; onFermer: () => void; onSelection: (s: string) => void }) {
+  const liste = resultat.tableaux.filter((t) => t.calculable);
+  const [id, setId] = useState(initial);
+  const t = liste.find((x) => x.id === id) ?? liste[0];
+  if (!t) return null;
+  return (
+    <Fenetre titre="Tableaux du devis" onFermer={onFermer} large>
+      <div className="grand-3d">
+        <nav className="grand-liste" aria-label="Tableaux">
+          {liste.map((x) => {
+            const m = resultat.aModifier.find((a) => a.tableau === x.nom);
+            return (
+              <button key={x.id} className="item" aria-current={x.id === t.id} onClick={() => setId(x.id)}>
+                <span className="nom">{x.nom}</span>
+                {m && <span className="compte">{m.changements.length}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="grand-vue">
+          <Vue3D key={t.id} t={t} grand />
+          <p className="aide-3d">Glisser pour tourner, clic droit pour déplacer, molette pour zoomer, double-clic pour recentrer.</p>
+        </div>
+        <div className="grand-infos">
+          <span className="surtitre">{t.bloc}</span>
+          <h3>{t.nom} <span className="pastille code">{t.ensemble}</span></h3>
+          <div className="chiffres">
+            <div><b>{t.points}</b><span>points</span></div>
+            <div><b>{t.socles}</b><span>socles</span></div>
+            <div><b>{t.circuits}</b><span>circuits</span></div>
+          </div>
+          <Legende />
+          <Remplissage t={t} />
+          <AFaire t={t} resultat={resultat} />
+          <button className="btn petit" style={{ marginTop: 14 }} onClick={() => onSelection(t.pieceId)}>Ouvrir la pièce {t.bloc}</button>
+        </div>
+      </div>
+    </Fenetre>
   );
 }

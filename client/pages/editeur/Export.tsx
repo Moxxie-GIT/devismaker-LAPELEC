@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Devis, Resultat } from '../../../shared/types';
 import { telecharger } from '../../lib/api';
 import { toast } from '../../lib/ui';
+import { Icone } from '../../lib/icones';
 
 export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauvegarde }: {
   devis: Devis; resultat: Resultat; onAller: (s: string) => void; avantExport: () => Promise<void>; etatSauvegarde: string;
@@ -28,7 +29,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
       <div className="titre-piece"><h1>Vérifier et exporter</h1></div>
 
       <section className="section">
-        <header><h2>{erreurs.length ? `${erreurs.length} point${erreurs.length > 1 ? 's' : ''} à corriger avant l’export` : 'Prêt à exporter'}</h2></header>
+        <header><h2 className={erreurs.length ? 'titre-erreur' : 'titre-ok'}><Icone nom={erreurs.length ? 'alerte' : 'coche'} taille={20} />{erreurs.length ? `${erreurs.length} point${erreurs.length > 1 ? 's' : ''} à corriger avant l’export` : 'Prêt à exporter'}</h2></header>
         {resultat.alertes.length === 0 && <p className="discret">Aucune alerte. {resultat.lignes.length} lignes réparties en {blocs.length} blocs.</p>}
         <div className="alertes">
           {[...erreurs, ...attentions].map((a, i) => (
@@ -48,7 +49,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
             <p>Télécharge le fichier d’import.</p>
             <div className="pied-section">
               <button className="btn primaire" disabled={envoi || erreurs.length > 0 || etatSauvegarde === 'conflit'} onClick={exporter}>
-                {envoi ? 'Préparation…' : 'Télécharger le fichier d’import'}
+                <Icone nom="telecharger" />{envoi ? 'Préparation…' : 'Télécharger le fichier d’import'}
               </button>
               <span className="petit discret">{resultat.lignes.length} lignes, {blocs.length} blocs</span>
             </div>

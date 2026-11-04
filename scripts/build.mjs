@@ -35,6 +35,8 @@ await esbuild.build({
   ...commun,
   entryPoints: [join(racine, 'client/main.tsx')],
   outdir: join(dist, 'public'), entryNames: 'app',
+  // la vue 3D (three.js) est découpée dans un fichier à part, chargé seulement quand on l'affiche
+  splitting: true, chunkNames: 'chunks/[name]-[hash]',
   platform: 'browser', format: 'esm', target: ['chrome100', 'edge100', 'firefox100', 'safari15'],
   jsx: 'automatic', minify: true, sourcemap: false,
   define: { 'process.env.NODE_ENV': '"production"', __VERSION__: JSON.stringify(version) },
