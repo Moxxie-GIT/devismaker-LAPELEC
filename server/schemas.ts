@@ -34,6 +34,7 @@ export const SchemaDevisData = z.object({
     id: texte(40), designation: texte(400), quantite: qte, pu: nbOuNull, coefMat: nbOuNull, heures: nbOuNull,
   })).max(200),
   notes: texte(5000),
+  logements: z.number().int().min(1).max(50).default(1),
 });
 
 export const SchemaEntete = z.object({

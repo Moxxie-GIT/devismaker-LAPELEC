@@ -2,11 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Devis, Piece, Resultat } from '../../shared/types';
 import { Icone } from '../lib/icones';
-import { LOTS } from '../../shared/lots';
+import { LOGEMENTS_MAX, LOTS } from '../../shared/lots';
 import { ORDRE_TYPES, TYPES_PIECES, dupliquerPiece, nouvellePiece } from '../../shared/lots/cfo/pieces';
 import { ErreurApi, get, post, put } from '../lib/api';
 import { Barre, useApp } from '../lib/app';
-import { Confirmer, Fenetre, Segments, dateCourte, toast } from '../lib/ui';
+import { Compteur, Confirmer, Fenetre, Segments, dateCourte, toast } from '../lib/ui';
 import { PanneauPiece } from './editeur/Piece';
 import { Cote } from './editeur/Cote';
 import { PanneauDomotique } from './editeur/Domotique';
@@ -152,7 +152,14 @@ export function Editeur({ id }: { id: string }) {
     <>
       <Barre>
         <span className="separateur" aria-hidden="true" />
-        <span className="fil"><b title={devis.titre}>{devis.titre}</b>{devis.client && <span className="client">{devis.client}</span>}</span>
+        <span className="fil">
+          <b title={devis.titre}>{devis.titre}</b>{devis.client && <span className="client">{devis.client}</span>}
+          {data.logements > 1 && (
+            <button className="logements" onClick={() => setSelection('projet')} title="Toutes les quantités de l’import sont multipliées. Réglage dans Projet.">
+              × {data.logements} logements
+            </button>
+          )}
+        </span>
         <span className={`etat etat-${etat}${etat === 'erreur' || etat === 'conflit' ? ' alerte' : ''}`} aria-live="polite"><i className="voyant" aria-hidden="true" />{texteEtat}</span>
         <button className={`btn-barre action${nbErreurs ? ' a-corriger' : ''}`} onClick={() => setSelection('export')}>
           <Icone nom={nbErreurs ? 'alerte' : 'telecharger'} />
@@ -234,6 +241,8 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
   const points = pieces.reduce((a, p) => a + p.circuits.reduce((b, c) => b + c.nb, 0), 0);
   const nbErreurs = resultat.alertes.filter((a) => a.niveau === 'erreur').length;
   const blocs = new Set(resultat.lignes.map((l) => l.bloc)).size;
+  const n = devis.data.logements;
+  const changerLogements = (v: number) => { if (v !== n) modifier((d) => { d.data.logements = v; }); };
   return (
     <>
       <div className="titre-piece"><h1>Projet</h1></div>
@@ -256,6 +265,18 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
           <div className="champ"><label htmlFor="p-client">Client</label><input id="p-client" value={devis.client} onChange={(e) => modifier((d) => { d.client = e.target.value; })} placeholder="Code client Esabora" /></div>
           <div className="champ"><label htmlFor="p-ref">N° de devis Esabora</label><input id="p-ref" value={devis.reference} onChange={(e) => modifier((d) => { d.reference = e.target.value; })} /></div>
         </div>
+      </section>
+      <section className="section">
+        <header><h2>Logements identiques</h2><p>Plusieurs maisons ou appartements identiques, même en miroir : saisis un seul logement.</p></header>
+        <div className="champ" style={{ flex: '0 0 auto' }}>
+          <span className="lbl">Nombre de logements</span>
+          <Compteur label="Nombre de logements identiques" valeur={n} min={1} max={LOGEMENTS_MAX} onChange={(v) => changerLogements(Math.round(v))} />
+        </div>
+        <p className="petit discret" style={{ marginTop: 8 }}>
+          {n > 1
+            ? `Le fichier d’import contient ${n} fois ce logement : toutes les quantités sont multipliées par ${n} (pièces, tableaux, domotique et divers). Les tableaux affichés et les quantités à changer dans les ensembles restent celles d’un logement, puisque chaque ensemble est déjà compté ${n} fois.`
+            : 'Mets 2 pour deux maisons identiques : le devis exporté sera exactement le double.'}
+        </p>
       </section>
       <section className="section">
         <header><h2>Commande de l’éclairage</h2></header>

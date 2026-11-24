@@ -302,3 +302,30 @@ test('devis enregistré par une ancienne version : complété à la lecture', as
   const r = calculer(d, params);
   assert.ok(r.lignes.some((l) => l.ref === 'ENSETD1'));
 });
+
+test('logements identiques : le fichier d’import est exactement le double', () => {
+  const un = calculer(villaDemo(), params);
+  const deux = calculer({ ...villaDemo(), logements: 2 }, params);
+  assert.equal(deux.lignes.length, un.lignes.length);
+  deux.lignes.forEach((l, i) => {
+    const { quantite, ...reste } = un.lignes[i];
+    const { quantite: q2, ...reste2 } = l;
+    assert.deepEqual(reste2, reste);
+    assert.equal(q2, quantite * 2, `${l.bloc} / ${l.designation}`);
+  });
+  // un logement : mêmes tableaux, mêmes quantités à changer dans chaque ensemble (compté 2 fois)
+  assert.deepEqual(deux.tableaux, un.tableaux);
+  assert.deepEqual(deux.aModifier, un.aModifier);
+  assert.ok(deux.lignes.some((l) => l.ref === 'ENSETD1' && l.quantite === 2));
+  const t1 = totauxParBloc(un.lignes).general, t2 = totauxParBloc(deux.lignes).general;
+  assert.ok(Math.abs(t2.heures - t1.heures * 2) < 0.05);
+  if (t1.total != null) assert.ok(Math.abs(t2.total! - t1.total * 2) < 0.05);
+});
+
+test('logements : valeur absente ou invalide ramenée à 1', async () => {
+  const { normaliserDevisData } = await import('../shared/lots');
+  assert.equal(normaliserDevisData({}).logements, 1);
+  assert.equal(normaliserDevisData({ logements: 0 }).logements, 1);
+  assert.equal(normaliserDevisData({ logements: 3 }).logements, 3);
+  assert.equal(normaliserDevisData({ logements: 999 }).logements, 50);
+});

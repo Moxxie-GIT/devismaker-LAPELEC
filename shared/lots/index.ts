@@ -83,8 +83,11 @@ export function normaliserDevisData(brut: any): DevisData {
       heures: typeof l?.heures === 'number' ? l.heures : null,
     })) : [],
     notes: texte(d.notes),
+    logements: Math.min(LOGEMENTS_MAX, Math.max(1, Math.round(nombre(d.logements, 1)))),
   };
 }
+
+export const LOGEMENTS_MAX = 50;
 
 export function nouveauDevisData(params: Parametres): DevisData {
   return {
@@ -93,5 +96,6 @@ export function nouveauDevisData(params: Parametres): DevisData {
     domotique: { actif: true, heuresEts: null, coupure: 1 },
     divers: params.diversModeles.map((designation) => ({ id: uid(), designation, quantite: 1, pu: null, coefMat: 1, heures: null })),
     notes: '',
+    logements: 1,
   };
 }

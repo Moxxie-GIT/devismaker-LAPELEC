@@ -15,8 +15,10 @@ export function PanneauDomotique({ devis, resultat, modifier }: { devis: Devis; 
     const p = params.domotique[cle];
     return q * (Math.round(p.pu * p.coefMat * 100) / 100 + Math.round((heures ?? p.heures) * params.tauxMo * p.coefMo * 100) / 100);
   };
-  const lignes = r ? ORDRE_DOMOTIQUE.filter((k) => r.modules[k]).map((k) => ({ k, q: r.modules[k] })) : [];
-  const total = lignes.reduce((a, l) => a + pv(l.k, l.q), 0) + (r ? pv('COUPURE', dom.coupure) + pv('ETS', 1, dom.heuresEts ?? 0) : 0);
+  // bloc exporté : × logements identiques, comme dans le fichier d'import
+  const n = devis.data.logements;
+  const lignes = r ? ORDRE_DOMOTIQUE.filter((k) => r.modules[k]).map((k) => ({ k, q: r.modules[k] * n })) : [];
+  const total = lignes.reduce((a, l) => a + pv(l.k, l.q), 0) + (r ? pv('COUPURE', dom.coupure * n) + pv('ETS', n, dom.heuresEts ?? 0) : 0);
 
   return (
     <>
@@ -43,13 +45,13 @@ export function PanneauDomotique({ devis, resultat, modifier }: { devis: Devis; 
             </div>
           </section>
           <section className="section">
-            <header><h2>Bloc exporté</h2><p>Prix et coefficients réglables dans Utilisateurs et prix.</p></header>
+            <header><h2>Bloc exporté</h2><p>{n > 1 ? `Pour les ${n} logements identiques. ` : ''}Prix et coefficients réglables dans Utilisateurs et prix.</p></header>
             <table className="liste bloc">
               <thead><tr><th>Désignation</th><th>Qté</th><th style={{ textAlign: 'right' }}>Total estimé</th></tr></thead>
               <tbody>
                 {lignes.map((l) => <tr key={l.k}><td>{params.domotique[l.k].designation}</td><td className="num">{l.q}</td><td className="num" style={{ textAlign: 'right' }}>{euros(pv(l.k, l.q))}</td></tr>)}
-                {dom.coupure > 0 && <tr><td>{params.domotique.COUPURE.designation}</td><td className="num">{dom.coupure}</td><td className="num" style={{ textAlign: 'right' }}>{euros(pv('COUPURE', dom.coupure))}</td></tr>}
-                <tr><td>{params.domotique.ETS.designation} ({dom.heuresEts ?? '?'} h)</td><td className="num">1</td><td className="num" style={{ textAlign: 'right' }}>{euros(pv('ETS', 1, dom.heuresEts ?? 0))}</td></tr>
+                {dom.coupure > 0 && <tr><td>{params.domotique.COUPURE.designation}</td><td className="num">{dom.coupure * n}</td><td className="num" style={{ textAlign: 'right' }}>{euros(pv('COUPURE', dom.coupure * n))}</td></tr>}
+                <tr><td>{params.domotique.ETS.designation} ({dom.heuresEts ?? '?'} h)</td><td className="num">{n}</td><td className="num" style={{ textAlign: 'right' }}>{euros(pv('ETS', n, dom.heuresEts ?? 0))}</td></tr>
                 <tr><td><b>Total du bloc</b></td><td /><td className="num" style={{ textAlign: 'right' }}><b>{euros(total)}</b></td></tr>
               </tbody>
             </table>

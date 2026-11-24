@@ -17,6 +17,7 @@ export function villaDemo(): DevisData {
   return {
     mode: 'KNX',
     notes: '',
+    logements: 1,
     domotique: { actif: true, heuresEts: 20, coupure: 1 },
     pieces: [
       P('Chambre 1', 'chambre', { choix: 'TD', section: 6 }, {

@@ -60,6 +60,12 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
   return (
     <>
       <div className="titre-piece"><h1>Vérifier et exporter</h1></div>
+      {devis.data.logements > 1 && (
+        <div className="message info bandeau">
+          <b>{devis.data.logements} logements identiques</b> : toutes les quantités du fichier d’import sont multipliées par {devis.data.logements}.
+          Les quantités à changer dans les ensembles tableaux sont celles d’un tableau (chaque ensemble est compté {devis.data.logements} fois).
+        </div>
+      )}
 
       <section className="section">
         <header><h2 className={erreurs.length ? 'titre-erreur' : 'titre-ok'}><Icone nom={erreurs.length ? 'alerte' : 'coche'} taille={20} />{erreurs.length ? `${erreurs.length} point${erreurs.length > 1 ? 's' : ''} à corriger avant l’export` : 'Prêt à exporter'}</h2></header>

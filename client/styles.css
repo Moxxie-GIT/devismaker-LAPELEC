@@ -93,6 +93,8 @@ a { color: var(--neutre); }
 .barre .fil { display: flex; align-items: center; gap: 10px; min-width: 0; color: #c9d4d9; font-size: var(--t-14); }
 .barre .fil b { color: #fff; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 .barre .fil .client { font-size: var(--t-11); color: #a9b8bf; background: rgba(255, 255, 255, 0.07); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.barre .fil .logements { font: inherit; font-size: var(--t-11); font-weight: 600; color: #1d2327; background: #f2c94c; border: 0; border-radius: 4px; padding: 1px 7px; white-space: nowrap; cursor: pointer; }
+.barre .fil .logements:hover { background: #f5d673; }
 .barre .espace { flex: 1; }
 .barre .etat { display: inline-flex; align-items: center; gap: 7px; font-size: var(--t-12); color: #a9b8bf; white-space: nowrap; }
 .barre .etat.alerte { color: #ffc9c4; }

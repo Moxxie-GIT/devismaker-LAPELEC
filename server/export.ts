@@ -9,6 +9,10 @@ const COLONNES = ['N°', 'Référence', 'Désignation', 'Quantité', 'Prix unita
 const c = (v: Cellule['v'], s: number = S.NORMAL): Cellule => ({ v, s });
 
 export function feuilles(devis: Devis, r: Resultat): Feuille[] {
+  const n = devis.data.logements > 1 ? devis.data.logements : 1;
+  const parLogement = n > 1
+    ? [c(`${n} logements identiques : l’import contient ${n} fois chaque ligne (quantités × ${n}). Ci-dessous : un logement, chaque ensemble tableau étant compté ${n} fois.`, S.SURLIGNE)]
+    : null;
   // 1. IMPORT : la seule feuille à importer
   const imp: Cellule[][] = [COLONNES.map((h, i) => c(h, i < 2 ? S.ENTETE_TEXTE : S.ENTETE))];
   for (const l of r.lignes) {
@@ -23,6 +27,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     [c("Après l'import : quantités à changer dans les ensembles tableaux (ne pas importer cette feuille)", S.TITRE)],
     [c("Seules les lignes qui changent sont listées. Tout le reste de l'ensemble reste tel quel (minimum facturé).", S.ITALIQUE)],
   ];
+  if (parLogement) mod.push(parLogement);
   if (!r.aModifier.length) mod.push([], [c('Aucun changement : les ensembles minimum suffisent.')]);
   for (const m of r.aModifier) {
     mod.push([], [c(`Bloc « ${m.bloc} »  >  ensemble ${m.ensemble}`, S.SOUS_TITRE)]);
@@ -42,6 +47,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     [c('Contrôle des calculs : feuille à ne PAS importer (importer uniquement la feuille IMPORT)', S.TITRE)],
     [c(`${devis.titre}${devis.client ? ` (${devis.client})` : ''}`, S.ITALIQUE)],
   ];
+  if (parLogement) det.push(parLogement);
   const attentions = r.alertes.filter((a) => a.niveau === 'attention');
   if (attentions.length) {
     det.push([], [c('Points à vérifier', S.SOUS_TITRE)]);
@@ -81,6 +87,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     [c('Totaux par bloc (ne pas importer cette feuille)', S.TITRE)],
     [c('Domotique et Divers : chiffrés avec les prix de l’outil, ceux qui partent dans le fichier d’import.', S.ITALIQUE)],
     [c('Pièces : faites d’ensembles Esabora, dont les prix sont dans Esabora. Leur montant apparaît après l’import ; ici, le nombre de lignes, d’articles et les heures de pose ajoutées.', S.ITALIQUE)],
+    ...(n > 1 ? [[c(`Totaux pour les ${n} logements identiques.`, S.SURLIGNE)]] : []),
     [],
     ['Bloc', 'Lignes', 'Articles', 'Heures de pose', 'Matériel (€ HT)', 'Main d’œuvre (€ HT)', 'Total (€ HT)'].map((h) => c(h, S.TH)),
   ];
@@ -96,6 +103,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     [c('Disposition des tableaux (ne pas importer cette feuille)', S.TITRE)],
     [c('Chaque interrupteur différentiel est suivi des disjoncteurs qu’il protège (8 au plus), sur le même rail.', S.ITALIQUE)],
   ];
+  if (n > 1) dis.push([c(`Tableaux d’un logement : à monter à l’identique dans chacun des ${n} logements.`, S.SURLIGNE)]);
   for (const t of r.tableaux) {
     const d = disposer(t);
     if (!d.mods.length) continue;

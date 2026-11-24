@@ -68,6 +68,8 @@ export interface DevisData {
   domotique: Domotique;
   divers: LigneLibre[];
   notes: string;
+  /** Logements identiques (maisons jumelles, même en miroir) : le devis saisi est celui d'un logement, l'import a toutes ses quantités × logements. */
+  logements: number;
 }
 
 export interface Devis {

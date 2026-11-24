@@ -585,5 +585,10 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   if (!pieces.length) err('Ajoute au moins une pièce.');
   for (const p of pieces) if (!TYPES_PIECES[p.type]) att(`${p.nom} : type de pièce inconnu.`, p.id);
 
+  // logements identiques : tout le fichier d'import × n. Les tableaux, les modules et les quantités
+  // à changer dans les ensembles restent ceux d'un logement (chaque ensemble est compté n fois).
+  const n = data.logements > 1 ? Math.round(data.logements) : 1;
+  if (n > 1) for (const l of lignes) l.quantite = Math.round(l.quantite * n * 1000) / 1000;
+
   return { lignes, tableaux: resTableaux, aModifier, domotique, alertes };
 }
