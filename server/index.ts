@@ -127,9 +127,10 @@ r.post('/api/devis', exigerConnexion, (req) => {
   const e = valider(SchemaEntete, req.body);
   const u = req.ctx.utilisateur.id;
   const did = id(); const t = maintenant();
+  const data = { ...nouveauDevisData(parametres()), mode: req.body?.mode === 'CLASSIQUE' ? 'CLASSIQUE' as const : 'KNX' as const };
   db.prepare(`INSERT INTO devis (id, titre, client, reference, lot, version, data, cree_par, modifie_par, cree_le, modifie_le)
               VALUES (?, ?, ?, ?, 'cfo', 1, ?, ?, ?, ?, ?)`)
-    .run(did, e.titre, e.client, e.reference, JSON.stringify(nouveauDevisData(parametres())), u, u, t, t);
+    .run(did, e.titre, e.client, e.reference, JSON.stringify(data), u, u, t, t);
   return { status: 201, json: lireDevis(did) };
 });
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Devis, DevisResume } from '../../shared/types';
+import type { Devis, DevisResume, Mode } from '../../shared/types';
 import { del, get, post } from '../lib/api';
 import { Barre, Initiales, useApp } from '../lib/app';
 import { Icone } from '../lib/icones';
-import { Confirmer, Fenetre, dateCourte, toast } from '../lib/ui';
+import { Confirmer, Fenetre, Segments, dateCourte, toast } from '../lib/ui';
 
 type Ligne = DevisResume & { presents: string[] };
 
@@ -127,19 +127,29 @@ function NouveauDevis({ onFermer }: { onFermer: () => void }) {
   const [titre, setTitre] = useState('');
   const [client, setClient] = useState('');
   const [reference, setReference] = useState('');
+  const [mode, setMode] = useState<Mode | null>(null);
   const [erreur, setErreur] = useState('');
   return (
     <Fenetre titre="Nouveau devis" onFermer={onFermer}>
       <form onSubmit={async (e) => {
         e.preventDefault(); setErreur('');
-        try { const d = await post<Devis>('/api/devis', { titre, client, reference }); naviguer(`/devis/${d.id}`); }
+        if (!mode) { setErreur('Indique s’il y a de la domotique.'); return; }
+        try { const d = await post<Devis>('/api/devis', { titre, client, reference, mode }); naviguer(`/devis/${d.id}`); }
         catch (x: any) { setErreur(x.message); }
       }}>
         {erreur && <div className="message erreur">{erreur}</div>}
         <div className="champ"><label htmlFor="nd-t">Titre</label><input id="nd-t" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Ex. Devis CFO villa Les Hibiscus" required /></div>
         <div className="champ"><label htmlFor="nd-c">Client</label><input id="nd-c" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Code client Esabora" /></div>
         <div className="champ"><label htmlFor="nd-r">N° de devis Esabora</label><input id="nd-r" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Facultatif" /></div>
-        <div className="boutons"><button type="button" className="btn" onClick={onFermer}>Annuler</button><button className="btn primaire">Créer le devis</button></div>
+        <div className="champ">
+          <span className="lbl">Domotique</span>
+          <Segments<Mode> label="Domotique" valeur={mode} options={[['KNX', 'Avec domotique KNX'], ['CLASSIQUE', 'Sans domotique']]} onChange={setMode} />
+          <span className="aide">
+            {mode === 'CLASSIQUE' ? 'Interrupteurs classiques : simple allumage, va-et-vient ou boutons poussoirs selon le nombre d’endroits d’où s’allume chaque circuit.'
+              : mode === 'KNX' ? 'Boutons poussoirs KNX, actionneurs dans les tableaux et bloc Domotique.' : 'Modifiable ensuite dans Projet.'}
+          </span>
+        </div>
+        <div className="boutons"><button type="button" className="btn" onClick={onFermer}>Annuler</button><button className="btn primaire" disabled={!mode}>Créer le devis</button></div>
       </form>
     </Fenetre>
   );

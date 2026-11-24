@@ -238,15 +238,79 @@ test('contrôles : TD non renseigné, noms en double, pas de TGBT', () => {
   assert.match(msg, /Aucune pièce ne porte le TGBT/);
 });
 
-test('mode classique : interrupteurs, pas de domotique ni de variation', () => {
+test('sans domotique : pas de bloc Domotique, ni variation, ni bouton KNX', () => {
   const d = villaDemo();
   d.mode = 'CLASSIQUE';
-  d.pieces[0].classique = { sa: 2, vv: 1, bps: 1 };
   const r = calculer(d, params);
   assert.equal(r.domotique, null);
   assert.ok(!r.lignes.some((l) => l.bloc === 'Domotique' || l.ref === 'ENSEBP' || l.ref === 'ENSELB'));
   assert.ok(!r.lignes.some((l) => l.designation.endsWith('variation')));
-  assert.deepEqual(r.lignes.filter((l) => ['ENSESA', 'ENSEVV', 'ENSEBPS'].includes(l.ref ?? '')).map((l) => `${l.ref}:${l.quantite}`), ['ENSESA:2', 'ENSEVV:1', 'ENSEBPS:1']);
+});
+
+test('sans domotique : interrupteur selon le nombre d’endroits, télérupteur au TD dès 3', () => {
+  const d = villaDemo();
+  d.mode = 'CLASSIQUE';
+  const ch = d.pieces[0];
+  ch.circuits = [
+    { ...ch.circuits[0], nom: 'spot chambre', nb: 5, commandes: 3 },     // entrée + les deux côtés du lit
+    { ...ch.circuits[1], nom: 'LED chambre', nb: 1, commandes: 2 },
+    { ...ch.circuits[2], nom: 'liseuse', nb: 2, commandes: 0 },          // interrupteur sur la liseuse
+    { ...ch.circuits[3], nom: 'spot salle de bain', nb: 4, commandes: 1 },
+    { ...ch.circuits[4], nom: 'spot dressing', nb: 2, commandes: 4 },
+  ];
+  ch.classique = { sa: 1, vv: 0, bps: 0 };                                // un interrupteur hors éclairage
+  const r = calculer(d, params);
+  const inter = r.lignes.filter((l) => l.bloc === 'Chambre 1' && /^ENSE(SA|VV|BPS)$/.test(l.ref ?? '')).map((l) => `${l.ref} ${l.designation} : ${l.quantite}`);
+  assert.deepEqual(inter, [
+    'ENSEBPS Interrupteur boutons poussoirs (spot chambre) : 3',
+    'ENSEVV Interrupteur va et vient (LED chambre) : 2',
+    'ENSESA Interrupteur simple allumage (spot salle de bain) : 1',
+    'ENSEBPS Interrupteur boutons poussoirs (spot dressing) : 4',
+    'ENSESA Interrupteur simple allumage : 1',
+  ]);
+  // deux circuits en boutons poussoirs : deux télérupteurs dans le TD, un déjà dans l'ensemble ENSETD1
+  const td = r.tableaux.find((t) => t.nom === 'TD Chambre 1')!;
+  const tl = td.protections.find((p) => p.cle === 'TL')!;
+  assert.deepEqual([tl.besoin, tl.base, tl.final, tl.ref], [2, 1, 2, 'Leg 412400']);
+  assert.deepEqual(td.departs.TL, [['spot chambre (Chambre 1)'], ['spot dressing (Chambre 1)']]);
+  assert.ok(r.aModifier.find((m) => m.tableau === 'TD Chambre 1')!.changements.some((c) => c.cle === 'TL' && c.final === 2));
+  // les télérupteurs ne comptent pas comme circuits sous un différentiel : groupe à part, étiquetés
+  assert.ok(td.groupes!.every((g) => !g.tete || g.membres.every((m) => m.cle !== 'TL')));
+  const mods = disposer(td).mods.filter((m) => m.cle === 'TL');
+  assert.deepEqual(mods.map((m) => [m.etat, m.fonctions?.[0], m.type]), [['', 'spot chambre (Chambre 1)', 'tl'], ['ajoute', 'spot dressing (Chambre 1)', 'tl']]);
+});
+
+test('avec domotique : les endroits de commande ne produisent aucun interrupteur ni télérupteur', () => {
+  const d = villaDemo();
+  d.pieces[0].circuits[0].commandes = 4;
+  const r = calculer(d, params);
+  assert.ok(!r.lignes.some((l) => /^ENSE(SA|VV|BPS)$/.test(l.ref ?? '')));
+  const tl = r.tableaux.find((t) => t.nom === 'TD Chambre 1')!.protections.find((p) => p.cle === 'TL')!;
+  assert.deepEqual([tl.besoin, tl.final], [0, 1]);   // celui de l'ensemble, facturé, en réserve
+});
+
+test('ancien devis sans domotique : les interrupteurs comptés à la main restent tels quels', async () => {
+  const { normaliserDevisData } = await import('../shared/lots');
+  const d = normaliserDevisData({
+    mode: 'CLASSIQUE',
+    pieces: [
+      { id: 'a', nom: 'Chambre 1', type: 'chambre', tableau: { choix: 'TGBT' }, classique: { sa: 2, vv: 1, bps: 0 }, circuits: [{ id: 'c', nom: 'Spot', nb: 6 }] },
+      { id: 'b', nom: 'Salon', type: 'salon', tableau: { choix: 'AUCUN' }, circuits: [{ id: 'd', nom: 'Suspente', nb: 2 }] },
+    ],
+  });
+  assert.equal(d.pieces[0].circuits[0].commandes, 0);
+  assert.equal(d.pieces[1].circuits[0].commandes, 1);
+  const r = calculer(d, params);
+  assert.deepEqual(r.lignes.filter((l) => /^ENSE(SA|VV)$/.test(l.ref ?? '')).map((l) => `${l.bloc} ${l.ref} ${l.quantite}`),
+    ['Chambre 1 ENSESA 2', 'Chambre 1 ENSEVV 1', 'Salon ENSESA 1']);
+});
+
+test('liaison équipotentielle d’une baie vitrée près de la piscine : ensemble ENSELE', () => {
+  const d = villaDemo();
+  d.pieces[0].elements.push(nouvelElement('ELEB', 2));
+  const r = calculer(d, params);
+  const l = r.lignes.find((x) => x.designation === 'Liaison équipotentielle baie vitrée (proximité piscine)')!;
+  assert.deepEqual([l.ref, l.quantite, l.bloc], ['ENSELE', 2, 'Chambre 1']);
 });
 
 test('TGBT tétra : départs des TD répartis sur les phases', () => {

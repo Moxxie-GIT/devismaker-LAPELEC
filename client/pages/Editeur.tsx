@@ -279,16 +279,16 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
         </p>
       </section>
       <section className="section">
-        <header><h2>Commande de l’éclairage</h2></header>
+        <header><h2>Domotique</h2></header>
         <Segments<'KNX' | 'CLASSIQUE'>
-          label="Mode de commande" valeur={devis.data.mode}
-          options={[['KNX', 'KNX (boutons poussoirs et domotique)'], ['CLASSIQUE', 'Classique (interrupteurs)']]}
+          label="Domotique" valeur={devis.data.mode}
+          options={[['KNX', 'Avec domotique KNX'], ['CLASSIQUE', 'Sans domotique']]}
           onChange={(m) => { if (m !== devis.data.mode) setChangementMode(m); }}
         />
         <p className="petit discret" style={{ marginTop: 8 }}>
           {devis.data.mode === 'KNX'
             ? 'Chaque pièce demande ses inters (avec leur nombre de boutons) et le type de commande de chaque circuit. Le bloc Domotique est calculé à partir de ces réponses.'
-            : 'Chaque pièce demande ses interrupteurs simple allumage, va-et-vient et boutons poussoirs. Pas de bloc Domotique.'}
+            : 'Chaque circuit d’éclairage demande de combien d’endroits on l’allume : 1 simple allumage, 2 va-et-vient, 3 ou plus boutons poussoirs avec un télérupteur au tableau. Pas de bloc Domotique.'}
         </p>
       </section>
       <section className="section">
@@ -297,10 +297,10 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
       </section>
       {changementMode && (
         <Confirmer
-          titre={changementMode === 'KNX' ? 'Passer en KNX ?' : 'Passer en commande classique ?'}
+          titre={changementMode === 'KNX' ? 'Passer avec domotique KNX ?' : 'Passer sans domotique ?'}
           texte={changementMode === 'KNX'
-            ? 'Les interrupteurs saisis restent en mémoire mais ne seront plus exportés. Il faudra saisir les inters KNX de chaque pièce.'
-            : 'Les inters KNX et le bloc Domotique restent en mémoire mais ne seront plus exportés. Il faudra saisir les interrupteurs de chaque pièce.'}
+            ? 'Les interrupteurs ne seront plus exportés. Il faudra saisir les inters KNX de chaque pièce.'
+            : 'Les inters KNX et le bloc Domotique restent en mémoire mais ne seront plus exportés. Vérifie dans chaque pièce de combien d’endroits s’allume chaque circuit (1 par défaut).'}
           action="Changer de mode"
           onNon={() => setChangementMode(null)}
           onOui={() => { const m = changementMode; modifier((d) => { d.data.mode = m; }); setChangementMode(null); }}

@@ -3,13 +3,20 @@ import { useState } from 'react';
 import type { Circuit, Devis, Piece, Resultat } from '../../../shared/types';
 import { CATALOGUE, LUMINAIRES } from '../../../shared/lots/cfo/catalogue';
 import { ORDRE_TYPES, TYPES_PIECES, nomCircuitParDefaut, nouveauCircuit, nouvelElement } from '../../../shared/lots/cfo/pieces';
-import { modulesPourInter } from '../../../shared/lots/cfo/moteur';
+import { modulesPourInter, typeCommande } from '../../../shared/lots/cfo/moteur';
 import { Compteur, Confirmer, Segments } from '../../lib/ui';
 import { Icone, type NomIcone } from '../../lib/icones';
 import type { Modifier } from '../Editeur';
 
 const COMMANDES: [Circuit['commande'], string][] = [['onoff', 'On/off'], ['v110', 'Variation 1-10 V'], ['v230', 'Variation 230 V'], ['dali', 'DALI']];
 const GROUPES = [...new Set(Object.values(CATALOGUE).map((c) => c.groupe))];
+/** Sans domotique : interrupteur déduit du nombre d'endroits (court, puis en clair). */
+const TYPE_CMD = {
+  aucune: ['—', 'Pas d’interrupteur (commande sur le luminaire, horloge…)'],
+  sa: ['SA', 'Simple allumage'],
+  vv: ['VV', 'Va-et-vient : un interrupteur à chaque endroit'],
+  bp: ['BP', 'Boutons poussoirs à chaque endroit, télérupteur au tableau'],
+} as const;
 
 export function PanneauPiece({ piece, devis, resultat, modifier, onSupprimee, onSelection }: {
   piece: Piece; devis: Devis; resultat: Resultat; modifier: Modifier; onSupprimee: () => void; onSelection: (s: string) => void;
@@ -66,7 +73,7 @@ export function PanneauPiece({ piece, devis, resultat, modifier, onSupprimee, on
       <section className="section">
         <header>
           <h2><Titre icone="interrupteur">Commandes</Titre></h2>
-          <p>{knx ? 'Un inter = une plaque. Le nombre de boutons sert au calcul des TA2 / TA4.' : 'Interrupteurs classiques.'}</p>
+          <p>{knx ? 'Un inter = une plaque. Le nombre de boutons sert au calcul des TA2 / TA4.' : 'Déduits des circuits d’éclairage (colonne « Allumé depuis »).'}</p>
         </header>
         {knx ? <CommandesKnx piece={piece} maj={maj} /> : <CommandesClassiques piece={piece} maj={maj} />}
       </section>
@@ -182,7 +189,7 @@ function Circuits({ piece, knx, maj }: { piece: Piece; knx: boolean; maj: (fn: (
     <>
       {piece.circuits.length > 0 && (
         <div className="defile"><table className="grille">
-          <thead><tr><th>Type</th><th>Nom dans la désignation</th><th>Lieu</th><th>Points</th>{knx && <th>Commande</th>}<th>Pose</th><th /></tr></thead>
+          <thead><tr><th>Type</th><th>Nom dans la désignation</th><th>Lieu</th><th>Points</th>{knx ? <th>Commande</th> : <th title="Nombre d’endroits d’où l’on allume ce circuit">Allumé depuis</th>}<th>Pose</th><th /></tr></thead>
           <tbody>
             {piece.circuits.map((c) => {
               const estLed = c.type === 'led';
@@ -203,11 +210,18 @@ function Circuits({ piece, knx, maj }: { piece: Piece; knx: boolean; maj: (fn: (
                   <td className="l"><input aria-label="Nom du circuit" value={c.nom} onChange={(e) => majC(c.id, (x) => { x.nom = e.target.value; })} placeholder="Ex. LED S1" /></td>
                   <td><Segments<'int' | 'ext'> petit label="Intérieur ou extérieur" valeur={c.lieu} options={[['int', 'Int.'], ['ext', 'Ext.']]} onChange={(v) => majC(c.id, (x) => { x.lieu = v; })} /></td>
                   <td><Compteur label="Nombre de points" valeur={c.nb} onChange={(n) => majC(c.id, (x) => { x.nb = n; })} /></td>
-                  {knx && (
+                  {knx ? (
                     <td>
                       <select className="s-cmd" aria-label="Commande" value={c.commande} onChange={(e) => majC(c.id, (x) => { x.commande = e.target.value as Circuit['commande']; })}>
                         {COMMANDES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
+                    </td>
+                  ) : (
+                    <td>
+                      <span className="endroits">
+                        <Compteur label="Nombre d’endroits d’où l’on allume ce circuit" valeur={c.commandes} max={20} onChange={(n) => majC(c.id, (x) => { x.commandes = Math.round(n); })} />
+                        <span className={`type-cmd ${typeCommande(c.commandes)}`} title={TYPE_CMD[typeCommande(c.commandes)][1]}>{TYPE_CMD[typeCommande(c.commandes)][0]}</span>
+                      </span>
                     </td>
                   )}
                   <td>
@@ -269,18 +283,35 @@ function CommandesKnx({ piece, maj }: { piece: Piece; maj: (fn: (p: Piece) => vo
 }
 
 function CommandesClassiques({ piece, maj }: { piece: Piece; maj: (fn: (p: Piece) => void) => void }) {
+  // ce que donnent les circuits d'éclairage (même règle que le moteur)
+  const n = { sa: 0, vv: 0, bp: 0, tl: 0 };
+  for (const c of piece.circuits) {
+    if (!(c.nb > 0)) continue;
+    const t = typeCommande(c.commandes);
+    if (t === 'sa') n.sa += 1;
+    if (t === 'vv') n.vv += 2;
+    if (t === 'bp') { n.bp += c.commandes; n.tl++; }
+  }
+  const resume = [
+    n.sa && `${n.sa} simple allumage`, n.vv && `${n.vv} va-et-vient`,
+    n.bp && `${n.bp} bouton${n.bp > 1 ? 's' : ''} poussoir${n.bp > 1 ? 's' : ''} (${n.tl} télérupteur${n.tl > 1 ? 's' : ''} au tableau)`,
+  ].filter(Boolean).join(', ');
   const ligne = (cle: 'sa' | 'vv' | 'bps', label: string) => (
     <div className="champ" style={{ flex: '0 0 auto' }}>
       <span className="lbl">{label}</span>
-      <Compteur label={label} valeur={piece.classique[cle]} onChange={(n) => maj((p) => { p.classique[cle] = n; })} />
+      <Compteur label={`${label} hors éclairage`} valeur={piece.classique[cle]} onChange={(v) => maj((p) => { p.classique[cle] = v; })} />
     </div>
   );
   return (
-    <div className="formulaire-ligne">
-      {ligne('sa', 'Simple allumage')}
-      {ligne('vv', 'Va-et-vient')}
-      {ligne('bps', 'Boutons poussoirs')}
-    </div>
+    <>
+      <p className="resume-ta" style={{ marginTop: 0 }}>{resume ? <>Éclairage : {resume}.</> : 'Aucun interrupteur pour l’éclairage.'}</p>
+      <h3 className="sous-titre">Interrupteurs en plus, hors éclairage</h3>
+      <div className="formulaire-ligne">
+        {ligne('sa', 'Simple allumage')}
+        {ligne('vv', 'Va-et-vient')}
+        {ligne('bps', 'Boutons poussoirs')}
+      </div>
+    </>
   );
 }
 

@@ -77,6 +77,8 @@ export const CATALOGUE: Record<string, ItemCatalogue> = {
   VOLET: { code: 'ENSEVR', designation: 'Alimentation volet roulant', groupe: 'Confort', protection: 'VR', canal: 'jm' },
   PORTAIL: { code: 'ENSEVR', designation: 'Alimentation portail', groupe: 'Confort', protection: 'VR', canal: 'onoff' },
   ELE: { code: 'ENSELE', designation: 'Liaison équipotentielle fenêtre salle de bain', groupe: 'Liaisons', protection: null },
+  // même ensemble que la fenêtre de salle de bain : une par baie vitrée proche du bassin
+  ELEB: { code: 'ENSELE', designation: 'Liaison équipotentielle baie vitrée (proximité piscine)', groupe: 'Liaisons', protection: null },
 
   // --- eau chaude, piscine, plomberie
   CE: { code: 'ENSECE', designation: 'Alimentation chauffe eau 220V', groupe: 'Plomberie / piscine', protection: 'C20' },
@@ -164,10 +166,12 @@ export const PROTECTIONS: Record<string, { label: string; ref: string }> = {
   // calibres 4P 30 mA sans référence relevée dans les ensembles : référence à choisir dans Esabora
   DD4_C16_AC30: { label: 'Disjoncteur différentiel 4P C16 30mA type AC (référence à choisir)', ref: '' },
   DD4_C32_AC30: { label: 'Disjoncteur différentiel 4P C32 30mA type AC (référence à choisir)', ref: '' },
+  // un par circuit d'éclairage en boutons poussoirs (sans domotique), derrière le disjoncteur de ce circuit
+  TL: { label: 'Télérupteur CX3 230V 1F 16A silencieux', ref: 'Leg 412400' },
 };
 export const ORDRE_PROTECTIONS = [
   'C10', 'C16', 'C20', 'C32', 'IDAC', 'IDA', 'D32', 'D40',
-  'DD4_C10_AC30', 'DD4_C16_AC30', 'DD4_C32_AC30', 'DD4_C10_AC300', 'DD4_C16_A300', 'DD4_C20_A300', 'DD4_C32_AC300',
+  'DD4_C10_AC30', 'DD4_C16_AC30', 'DD4_C32_AC30', 'DD4_C10_AC300', 'DD4_C16_A300', 'DD4_C20_A300', 'DD4_C32_AC300', 'TL',
 ];
 /** Disjoncteur différentiel 4P 30 mA d'un appareil 400 V, selon son calibre. */
 export const PROTECTION_TRI: Record<string, string> = { C10: 'DD4_C10_AC30', C16: 'DD4_C16_AC30', C32: 'DD4_C32_AC30' };
@@ -175,7 +179,7 @@ export const PROTECTION_TRI: Record<string, string> = { C10: 'DD4_C10_AC30', C16
 /** Largeur en modules des protections. */
 export const MODULES_PROTECTION: Record<string, number> = {
   C10: 1, C16: 1, C20: 1, C32: 1, IDAC: 2, IDA: 2, D32: 2, D40: 2,
-  DD4_C10_AC30: 4, DD4_C16_AC30: 4, DD4_C32_AC30: 4, DD4_C10_AC300: 4, DD4_C16_A300: 4, DD4_C20_A300: 4, DD4_C32_AC300: 4,
+  DD4_C10_AC30: 4, DD4_C16_AC30: 4, DD4_C32_AC30: 4, DD4_C10_AC300: 4, DD4_C16_A300: 4, DD4_C20_A300: 4, DD4_C32_AC300: 4, TL: 1,
 };
 
 /** Appareil fixe de l'ensemble (toujours présent, jamais modifié par le calcul). */
@@ -200,7 +204,6 @@ export interface ModeleTableau {
 }
 
 const IS = (label: string, nom: string, ref: string, modules: number): AppareilFixe => ({ type: 'is', label, nom, ref, modules });
-const TL: AppareilFixe = { type: 'tl', label: 'TL 16A', nom: 'CX3 TL 230V 1F 16A SILENCIEUX', ref: 'Leg 412400', modules: 1 };
 const REP_4P: AppareilFixe = { type: 'repartiteur', label: 'Répartiteur 4P 125A', nom: 'REP MOD 4P 125A 10M', ref: 'Leg 400410', modules: 10 };
 // 10 blocs de passage à vis 4 mm² (pas de 6 mm) : 60 mm, soit 4 emplacements de 18 mm sur le rail
 const BORNIER: AppareilFixe = { type: 'bornier', label: 'Bornier (10)', nom: 'BLOC PASS.VIS 1 JONCT. 4 GRIS (× 10)', ref: 'Leg 037161', modules: 4, fin: true };
@@ -209,9 +212,9 @@ const MO = (h: number) => ({ nom: `Main d’œuvre (${h} h)`, q: 1 });
 export const TABLEAUX: Record<string, ModeleTableau> = {
   TD_MONO: {
     code: 'ENSETD1', designation: 'Tableau TD monophasé', calculable: true,
-    base: { C10: { q: 1 }, C16: { q: 1 }, C20: { q: 1 }, C32: { q: 1 }, IDAC: { q: 1 }, IDA: { q: 1 } },
+    base: { C10: { q: 1 }, C16: { q: 1 }, C20: { q: 1 }, C32: { q: 1 }, IDAC: { q: 1 }, IDA: { q: 1 }, TL: { q: 1 } },
     coffret: { ref: 'Leg 401213', nom: 'COFFRET SAILLIE 3RX13M BCA', rangees: 3, parRangee: 13, teinte: 'blanc' },
-    fixes: [IS('IS 63A', 'DX3 IS 2P 63A', 'Leg 406441', 2), TL],
+    fixes: [IS('IS 63A', 'DX3 IS 2P 63A', 'Leg 406441', 2)],
     contenu: [
       { ref: 'Leg 401213', nom: 'COFFRET SAILLIE 3RX13M BCA', q: 1 },
       { ref: 'Leg 093032', nom: 'PORTE BLANCHE TABLEAU 3R', q: 1 },
@@ -300,10 +303,10 @@ export const TABLEAUX: Record<string, ModeleTableau> = {
     code: 'ENSETGBTT', designation: 'Tableau TGBT tétra', calculable: true,
     base: {
       C10: { q: 1 }, C16: { q: 1 }, C20: { q: 1 }, C32: { q: 1 }, IDAC: { q: 1 }, IDA: { q: 1 }, D32: { q: 1 }, D40: { q: 1 },
-      DD4_C10_AC300: { q: 1 }, DD4_C16_A300: { q: 1 }, DD4_C20_A300: { q: 1 }, DD4_C32_AC300: { q: 1 },
+      DD4_C10_AC300: { q: 1 }, DD4_C16_A300: { q: 1 }, DD4_C20_A300: { q: 1 }, DD4_C32_AC300: { q: 1 }, TL: { q: 1 },
     },
     coffret: { ref: 'Leg 401806', nom: 'XL3 160 COMPLET ISOLANT 6R', rangees: 6, parRangee: 24, teinte: 'blanc' },
-    fixes: [IS('IS 4P 100A', 'DX3 IS 4P 100A', 'Leg 406489', 4), REP_4P, TL],
+    fixes: [IS('IS 4P 100A', 'DX3 IS 4P 100A', 'Leg 406489', 4), REP_4P],
     contenu: [
       { ref: 'Leg 406489', nom: 'DX3 IS 4P 100A', q: 1 },
       { ref: 'Leg 401806', nom: 'XL3 160 COMPLET ISOLANT 6R', q: 1 },

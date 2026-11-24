@@ -37,6 +37,7 @@ export function fusionnerParametres(p: Partial<Parametres> | null | undefined): 
 }
 
 const nombre = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const comptesManuels = (p: any) => ['sa', 'vv', 'bps'].some((k) => nombre(p?.classique?.[k]) > 0);
 const texte = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
 
 /**
@@ -61,6 +62,9 @@ export function normaliserDevisData(brut: any): DevisData {
       id: texte(c?.id, uid()), type: texte(c?.type, 'autre'), nom: texte(c?.nom), lieu: c?.lieu === 'ext' ? 'ext' : 'int',
       nb: nombre(c?.nb), commande: ['onoff', 'v110', 'v230', 'dali'].includes(c?.commande) ? c.commande : 'onoff',
       pose: ['std', 'led_facile', 'led_difficile', 'aucune'].includes(c?.pose) ? c.pose : 'std',
+      // avant les endroits de commande, les interrupteurs se comptaient à la main par pièce : ces comptes restent
+      // (interrupteurs en plus) et les circuits de ces pièces ne rajoutent rien, pour garder le même devis
+      commandes: typeof c?.commandes === 'number' && c.commandes >= 0 ? Math.round(c.commandes) : comptesManuels(p) ? 0 : 1,
     })) : [],
     inters: Array.isArray(p?.inters) ? p.inters.filter((n: unknown) => typeof n === 'number' && n >= 1) : [],
     detecteurs: nombre(p?.detecteurs),

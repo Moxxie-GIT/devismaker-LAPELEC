@@ -30,6 +30,8 @@ mkdirSync(DOSSIER, { recursive: true });
   // nouveau devis
   await p.click('text=Nouveau devis');
   await p.fill('#nd-t', 'Devis CFO villa Les Hibiscus'); await p.fill('#nd-c', 'CLIENT01');
+  assert.ok(await p.locator('.fenetre button:has-text("Créer le devis")').isDisabled(), 'domotique à choisir avant de créer');
+  await p.click('.fenetre >> text=Avec domotique KNX');
   await p.click('.fenetre >> text=Créer le devis');
   await p.waitForSelector('h1:has-text("Projet")');
   await cap('03-projet');

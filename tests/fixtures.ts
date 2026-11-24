@@ -4,7 +4,7 @@ import type { Circuit, DevisData, Element, Piece } from '../shared/types';
 let n = 0;
 const id = () => `id${++n}`;
 const C = (nom: string, nb: number, opts: Partial<Circuit> = {}): Circuit =>
-  ({ id: id(), type: 'autre', nom, lieu: 'int', nb, commande: 'onoff', pose: 'std', ...opts });
+  ({ id: id(), type: 'autre', nom, lieu: 'int', nb, commande: 'onoff', pose: 'std', commandes: 1, ...opts });
 const E = (cle: string, quantite: number, designation: string): Element => ({ id: id(), cle, designation, quantite });
 const P = (nom: string, type: string, tableau: Partial<Piece['tableau']>, rest: Partial<Piece>): Piece => ({
   id: nom, nom, type,

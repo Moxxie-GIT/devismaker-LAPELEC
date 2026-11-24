@@ -24,7 +24,7 @@ export const TYPES_PIECES: Record<string, TypePiece> = {
     aide: 'Les chambres ont souvent leur propre TD, mais pas toujours : à vérifier sur le plan.',
     circuits: [['spot', 6], ['led', 1], ['liseuse', 2]],
     elements: [['PCS', 1], ['PCD', 4], ['USB', 2], ['PCQ', 0], ['PCDI_FRIGO', 0], ['PCDI_CAFE', 0], ['PCDI_BOUILLOIRE', 0],
-      ['VENTILO', 0], ['RIDEAUX', 0], ['CLIM', 1], ['VMC', 1], ['PCSE', 0], ['PCSEP', 0], ['ELE', 0]],
+      ['VENTILO', 0], ['RIDEAUX', 0], ['CLIM', 1], ['VMC', 1], ['PCSE', 0], ['PCSEP', 0], ['ELE', 0], ['ELEB', 0]],
   },
   sdb: {
     label: 'Salle de bain / WC', suffixe: 'salle de bain', conseilTableau: 'AUCUN',
@@ -37,13 +37,13 @@ export const TYPES_PIECES: Record<string, TypePiece> = {
     aide: 'Avec la plaque, le TD de cuisine est en général alimenté en 10 mm².',
     circuits: [['spot', 5], ['led', 1, { nom: 'LED meuble cuisine' }], ['suspente', 0, { nom: 'Suspente îlot' }]],
     elements: [['PCDI_FOUR', 1], ['PCDI_MO', 1], ['PCDI_LV', 1], ['PCDI_FRIGO', 1], ['PCDI_HOTTE', 1], ['PLAQUE', 1],
-      ['PCD_CUISINE', 3], ['PCS', 1], ['PCDI_CONGEL', 0], ['PCDI_CAVE', 0], ['PCDI_GLACONS', 0], ['PSOL', 0], ['CLIM', 1], ['VMC', 1]],
+      ['PCD_CUISINE', 3], ['PCS', 1], ['PCDI_CONGEL', 0], ['PCDI_CAVE', 0], ['PCDI_GLACONS', 0], ['PSOL', 0], ['CLIM', 1], ['VMC', 1], ['ELEB', 0]],
   },
   salon: {
     label: 'Salon / séjour', suffixe: 'salon', conseilTableau: 'AUCUN',
     aide: 'Le salon est souvent sur le TGBT, parfois sur son propre TD.',
     circuits: [['charpente', 6], ['suspente', 2], ['led', 0]],
-    elements: [['PCD_TV', 1], ['PCS', 3], ['PCS_CMD', 0], ['PSOL', 0], ['PCQ', 0], ['VOLET', 0], ['VENTILO', 0], ['CLIM', 1]],
+    elements: [['PCD_TV', 1], ['PCS', 3], ['PCS_CMD', 0], ['PSOL', 0], ['PCQ', 0], ['VOLET', 0], ['VENTILO', 0], ['CLIM', 1], ['ELEB', 0]],
   },
   buanderie: {
     label: 'Buanderie / laverie', suffixe: 'buanderie', conseilTableau: 'AUCUN',
@@ -77,7 +77,7 @@ export const TYPES_PIECES: Record<string, TypePiece> = {
     label: 'Spa / fitness', suffixe: 'spa', conseilTableau: 'AUCUN',
     aide: 'Un spa avec sauna et jacuzzi a souvent son propre TD.',
     circuits: [['spot', 4], ['led', 1]],
-    elements: [['JACUZZI', 0], ['SAUNA', 0], ['BASSIN', 0], ['CE', 0], ['PCDI_MACHINE', 0], ['PCS', 2], ['PCD_TV', 0], ['CLIM', 1], ['VMC', 1]],
+    elements: [['JACUZZI', 0], ['SAUNA', 0], ['BASSIN', 0], ['CE', 0], ['PCDI_MACHINE', 0], ['PCS', 2], ['PCD_TV', 0], ['CLIM', 1], ['VMC', 1], ['ELEB', 0]],
   },
   local_tech: {
     label: 'Local technique électrique', suffixe: 'local technique', conseilTableau: 'TGBT',
@@ -112,7 +112,7 @@ export function nouveauCircuit(typeLum: string, typePiece: string, nb = 1, extra
   const l = LUMINAIRES[typeLum] ?? LUMINAIRES.autre;
   return {
     id: uid(), type: typeLum, nom: nomCircuitParDefaut(typeLum, typePiece), lieu: l.lieu, nb,
-    commande: 'onoff', pose: l.pose, ...extra,
+    commande: 'onoff', pose: l.pose, commandes: 1, ...extra,
   };
 }
 

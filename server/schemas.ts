@@ -23,6 +23,7 @@ export const SchemaDevisData = z.object({
     circuits: z.array(z.object({
       id: texte(40), type: texte(40), nom: texte(200), lieu: z.enum(['int', 'ext']), nb: qte,
       commande: z.enum(['onoff', 'v110', 'v230', 'dali']), pose: z.enum(['std', 'led_facile', 'led_difficile', 'aucune']),
+      commandes: z.number().int().min(0).max(20).default(1),
     })).max(300),
     inters: z.array(z.number().int().min(1).max(32)).max(300),
     detecteurs: qte,

@@ -12,10 +12,11 @@ export const REPERE: Record<string, string> = {
   C10: 'C10', C16: 'C16', C20: 'C20', C32: 'C32', D32: 'C32\n300mA', D40: 'C40\n300mA', IDAC: 'ID\nAC', IDA: 'ID\nA',
   DD4_C10_AC30: 'C10 4P\n30mA', DD4_C16_AC30: 'C16 4P\n30mA', DD4_C32_AC30: 'C32 4P\n30mA',
   DD4_C10_AC300: 'C10 4P\n300mA', DD4_C16_A300: 'C16 4P\n300mA', DD4_C20_A300: 'C20 4P\n300mA', DD4_C32_AC300: 'C32 4P\n300mA',
+  TL: 'TL 16A',
 };
 const ORDRE = [
   'IDAC', 'IDA', 'D32', 'D40', 'DD4_C10_AC30', 'DD4_C16_AC30', 'DD4_C32_AC30', 'DD4_C10_AC300', 'DD4_C16_A300', 'DD4_C20_A300', 'DD4_C32_AC300',
-  'C10', 'C16', 'C20', 'C32',
+  'C10', 'C16', 'C20', 'C32', 'TL',
 ];
 
 export type EtatModule = '' | 'ajoute' | 'inutile' | 'fixe' | 'libre' | 'knx';
@@ -66,7 +67,7 @@ function appareil(t: TableauCalcule, k: string, i: number): Mod {
   const p = t.protections.find((x) => x.cle === k)!;
   const etat: EtatModule = i >= p.base ? 'ajoute' : i >= p.besoin ? 'inutile' : '';
   const fonctions = i < p.besoin ? t.departs?.[k]?.[i] : undefined;
-  return { cle: k, rep: REPERE[k] ?? k, nom: p.label, ref: p.ref, largeur: MODULES_PROTECTION[k] ?? 1, etat, fonctions };
+  return { cle: k, rep: REPERE[k] ?? k, nom: p.label, ref: p.ref, largeur: MODULES_PROTECTION[k] ?? 1, etat, fonctions, type: k === 'TL' ? 'tl' : undefined };
 }
 
 /** Suites d'appareils à poser d'un seul tenant sur un rail. */

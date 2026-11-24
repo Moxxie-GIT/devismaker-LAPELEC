@@ -162,6 +162,8 @@ function grouper(
     const nom = `Différentiel ${n + 1}${id.phase ? ` (${id.phase})` : ''}`;
     groupes.push({ libelle: nom, tete: { cle: id.cle, i: id.i }, membres: id.membres });
   });
+  const tl = p('TL')?.final ?? 0;
+  if (tl) groupes.push({ libelle: 'Télérupteurs', membres: Array.from({ length: tl }, (_, i) => ({ cle: 'TL', i })) });
   if (reserve.length || sansId.length) groupes.push({ libelle: 'Réserve', membres: [...sansId, ...reserve] });
   return groupes;
 }
@@ -170,12 +172,23 @@ interface TableauInterne {
   id: string; nom: string; bloc: string; pieceId: string; modele: ModeleTableau; modeleCle: string; section: 6 | 10; phase: 'mono' | 'tetra';
   points: number; socles: number; vr: number; nA: number; ded: Record<string, number>;
   rattachees: string[]; detail: string[]; canaux: Record<string, number>;
+  /** Circuits d'éclairage en boutons poussoirs (sans domotique) : un télérupteur chacun. */
+  tl: string[];
   // ce que protège chaque départ, pour les étiquettes du tableau
   fn: {
     lum: Charge[]; soc: Charge[]; vr: Charge[];
     ded: Record<string, { libelle: string; kw: number; typeA: boolean }[]>;
     tri: { libelle: string; cle: string; kw: number }[];          // appareils 400 V (tableaux tétra)
   };
+}
+
+/**
+ * Sans domotique, l'interrupteur d'un circuit d'éclairage selon le nombre d'endroits d'où on l'allume :
+ * 1 simple allumage, 2 va-et-vient (un interrupteur à chaque endroit), 3 et plus boutons poussoirs (un à chaque
+ * endroit) avec un télérupteur au tableau.
+ */
+export function typeCommande(endroits: number): 'aucune' | 'sa' | 'vv' | 'bp' {
+  return endroits >= 3 ? 'bp' : endroits === 2 ? 'vv' : endroits === 1 ? 'sa' : 'aucune';
 }
 
 export function calculer(data: DevisData, params: Parametres): Resultat {
@@ -204,7 +217,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   const tableaux = new Map<string, TableauInterne>();
   const creerTableau = (id: string, nom: string, p: Piece, modeleCle: string): TableauInterne => ({
     id, nom, bloc: p.nom.trim(), pieceId: p.id, modele: TABLEAUX[modeleCle], modeleCle, section: p.tableau.section, phase: p.tableau.phase,
-    points: 0, socles: 0, vr: 0, nA: 0, ded: {}, rattachees: [], detail: [], canaux: {},
+    points: 0, socles: 0, vr: 0, nA: 0, ded: {}, rattachees: [], detail: [], canaux: {}, tl: [],
     fn: { lum: [], soc: [], vr: [], ded: {}, tri: [] },
   });
   if (tgbts[0]) {
@@ -270,6 +283,21 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         });
       });
     } else {
+      // sans domotique : l'interrupteur dépend du nombre d'endroits d'où l'on allume le circuit
+      for (const c of p.circuits) {
+        if (!(c.nb > 0)) continue;
+        const nom = c.nom.trim() || 'point lumineux';
+        const n = Math.round(c.commandes ?? 1);
+        switch (typeCommande(n)) {
+          case 'sa': L('ENSESA', `Interrupteur simple allumage (${nom})`, 1); break;
+          case 'vv': L('ENSEVV', `Interrupteur va et vient (${nom})`, 2); break;
+          case 'bp':
+            L('ENSEBPS', `Interrupteur boutons poussoirs (${nom})`, n);
+            if (t) { t.tl.push(`${nom} (${b})`); t.detail.push(`${b} : télérupteur pour ${nom} (${n} boutons poussoirs)`); }
+            break;
+        }
+      }
+      // interrupteurs en plus, hors circuits d'éclairage
       if (p.classique.sa > 0) L('ENSESA', 'Interrupteur simple allumage', p.classique.sa);
       if (p.classique.vv > 0) L('ENSEVV', 'Interrupteur va et vient', p.classique.vv);
       if (p.classique.bps > 0) L('ENSEBPS', 'Interrupteur boutons poussoirs', p.classique.bps);
@@ -420,6 +448,9 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
         C32: t.ded.C32 ?? 0,
       };
       nbCircuits = need.C10 + need.C16 + need.C20 + need.C32;
+      // télérupteurs : pas des circuits, ils commandent l'éclairage derrière son disjoncteur
+      need.TL = t.tl.length;
+      departs.TL = t.tl.map((x) => [x]);
 
       // TGBT : un départ 1P+N 300 mA par TD monophasé (pas sous un ID 30 mA, il a son propre différentiel)
       const versTd: Depart[] = [];

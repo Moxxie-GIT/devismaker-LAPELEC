@@ -17,6 +17,7 @@ function genre(m: Mod): Genre {
   if (m.cle === 'IDAC' || m.cle === 'IDA') return 'id';
   if (m.cle === 'D32' || m.cle === 'D40' || m.cle.startsWith('DD4')) return 'diff';
   if (m.etat === 'knx') return 'knx';
+  if (m.cle === 'TL') return 'tl';
   if (m.etat === 'fixe') return m.type ?? 'is';
   return 'dnx';
 }

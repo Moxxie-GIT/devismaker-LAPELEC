@@ -14,6 +14,8 @@ export interface Circuit {
   nb: number;
   commande: Commande;
   pose: Pose;
+  /** Sans domotique : nombre d'endroits d'où le circuit s'allume (1 simple allumage, 2 va-et-vient, 3 et plus boutons poussoirs + télérupteur, 0 aucun). */
+  commandes: number;
 }
 
 /** Un équipement de la pièce (prise, alimentation...) tiré du catalogue. */
@@ -43,7 +45,7 @@ export interface Piece {
   circuits: Circuit[];
   inters: number[];                // KNX : nombre de boutons de chaque inter
   detecteurs: number;              // KNX
-  classique: { sa: number; vv: number; bps: number }; // mode classique
+  classique: { sa: number; vv: number; bps: number }; // sans domotique : interrupteurs en plus, hors circuits d'éclairage
   elements: Element[];
 }
 

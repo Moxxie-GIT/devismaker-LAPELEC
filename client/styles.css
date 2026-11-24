@@ -378,6 +378,12 @@ h2.titre-erreur .icone, h2.titre-ok .icone { vertical-align: -4px; margin-right:
 .inter { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--trait); background: var(--surface-2); border-radius: var(--r-l); padding: 4px 4px 4px 12px; }
 .inter .n { font-family: var(--din); color: var(--encre-2); font-size: var(--t-12); font-weight: 600; }
 .resume-ta { font-size: var(--t-12); color: var(--encre-2); margin-top: 12px; padding: 8px 10px; background: var(--surface-2); border-radius: var(--r); }
+h3.sous-titre { font-size: var(--t-12); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--encre-3); margin: 14px 0 8px; }
+/* sans domotique : nombre d'endroits d'allumage et interrupteur déduit */
+.endroits { display: inline-flex; align-items: center; gap: 6px; }
+.type-cmd { display: inline-block; min-width: 28px; text-align: center; font-family: var(--din); font-size: var(--t-11); font-weight: 600; border-radius: 4px; padding: 2px 5px; background: var(--surface-2); color: var(--encre-3); border: 1px solid var(--trait); cursor: help; }
+.type-cmd.sa, .type-cmd.vv { color: var(--encre-2); }
+.type-cmd.bp { color: var(--attention); background: var(--attention-clair); border-color: transparent; }
 
 .pied-section { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
