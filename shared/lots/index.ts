@@ -2,7 +2,7 @@
 // et l'enregistrer ici : catalogue, types de pièces et moteur propres au lot.
 import type { DevisData, Parametres, Piece, Resultat } from '../types';
 import { calculer as calculerCfo } from './cfo/moteur';
-import { DIVERS_MODELES, DOMOTIQUE_DEFAUT } from './cfo/catalogue';
+import { DIVERS_MODELES, DOMOTIQUE_DEFAUT, TEXTES_FIN } from './cfo/catalogue';
 import { uid } from './cfo/pieces';
 
 export interface Lot {
@@ -21,6 +21,7 @@ export function parametresParDefaut(): Parametres {
     coefMo: 1,
     domotique: structuredClone(DOMOTIQUE_DEFAUT),
     diversModeles: [...DIVERS_MODELES],
+    textesFin: [...TEXTES_FIN],
   };
 }
 
@@ -33,6 +34,7 @@ export function fusionnerParametres(p: Partial<Parametres> | null | undefined): 
     coefMo: typeof p.coefMo === 'number' ? p.coefMo : d.coefMo,
     domotique: { ...d.domotique, ...(p.domotique ?? {}) },
     diversModeles: Array.isArray(p.diversModeles) ? p.diversModeles : d.diversModeles,
+    textesFin: Array.isArray(p.textesFin) ? p.textesFin : d.textesFin,
   };
 }
 
@@ -88,6 +90,7 @@ export function normaliserDevisData(brut: any): DevisData {
     })) : [],
     notes: texte(d.notes),
     logements: Math.min(LOGEMENTS_MAX, Math.max(1, Math.round(nombre(d.logements, 1)))),
+    nomLogements: texte(d.nomLogements).trim() ? texte(d.nomLogements) : 'Maison',
   };
 }
 
@@ -101,5 +104,6 @@ export function nouveauDevisData(params: Parametres): DevisData {
     divers: params.diversModeles.map((designation) => ({ id: uid(), designation, quantite: 1, pu: null, coefMat: 1, heures: null })),
     notes: '',
     logements: 1,
+    nomLogements: 'Maison',
   };
 }

@@ -367,23 +367,31 @@ test('devis enregistré par une ancienne version : complété à la lecture', as
   assert.ok(r.lignes.some((l) => l.ref === 'ENSETD1'));
 });
 
-test('logements identiques : le fichier d’import est exactement le double', () => {
+test('logements identiques : un bloc par logement, ses pièces en sous-blocs 1.1, 1.2…', () => {
   const un = calculer(villaDemo(), params);
-  const deux = calculer({ ...villaDemo(), logements: 2 }, params);
-  assert.equal(deux.lignes.length, un.lignes.length);
-  deux.lignes.forEach((l, i) => {
-    const { quantite, ...reste } = un.lignes[i];
-    const { quantite: q2, ...reste2 } = l;
-    assert.deepEqual(reste2, reste);
-    assert.equal(q2, quantite * 2, `${l.bloc} / ${l.designation}`);
-  });
-  // un logement : mêmes tableaux, mêmes quantités à changer dans chaque ensemble (compté 2 fois)
+  const deux = calculer({ ...villaDemo(), logements: 2, nomLogements: 'Villa' }, params);
+  const blocs = [...new Set(un.lignes.map((l) => l.bloc))];
+  // pour chaque logement : titre « Villa k », puis chaque bloc avec son titre et exactement les mêmes lignes
+  const attendu: typeof un.lignes = [];
+  for (const k of [1, 2]) {
+    attendu.push({ bloc: `${k}`, ref: null, designation: `Villa ${k}`, quantite: null, titre: true });
+    blocs.forEach((b, j) => {
+      attendu.push({ bloc: `${k}.${j + 1}`, ref: null, designation: b, quantite: null, titre: true });
+      for (const l of un.lignes.filter((x) => x.bloc === b)) attendu.push({ ...l, bloc: `${k}.${j + 1}` });
+    });
+  }
+  assert.deepEqual(deux.lignes, attendu);
+  assert.ok(blocs.includes('Domotique') && blocs.includes('Divers'));
+  assert.deepEqual(deux.numeros!['Chambre 1'], ['1.1', '2.1']);
+  // un logement : mêmes tableaux et mêmes changements d'ensemble (à faire dans chaque logement)
   assert.deepEqual(deux.tableaux, un.tableaux);
   assert.deepEqual(deux.aModifier, un.aModifier);
-  assert.ok(deux.lignes.some((l) => l.ref === 'ENSETD1' && l.quantite === 2));
-  const t1 = totauxParBloc(un.lignes).general, t2 = totauxParBloc(deux.lignes).general;
-  assert.ok(Math.abs(t2.heures - t1.heures * 2) < 0.05);
-  if (t1.total != null) assert.ok(Math.abs(t2.total! - t1.total * 2) < 0.05);
+  // totaux : chaque sous-bloc nommé, total général = 2 × un logement
+  const t1 = totauxParBloc(un.lignes), t2 = totauxParBloc(deux.lignes);
+  assert.equal(t2.blocs[0].bloc, '1.1 Chambre 1');
+  assert.equal(t2.blocs.length, t1.blocs.length * 2);
+  assert.ok(Math.abs(t2.general.heures - t1.general.heures * 2) < 0.05);
+  if (t1.general.total != null) assert.ok(Math.abs(t2.general.total! - t1.general.total * 2) < 0.05);
 });
 
 test('logements : valeur absente ou invalide ramenée à 1', async () => {
@@ -392,4 +400,22 @@ test('logements : valeur absente ou invalide ramenée à 1', async () => {
   assert.equal(normaliserDevisData({ logements: 0 }).logements, 1);
   assert.equal(normaliserDevisData({ logements: 3 }).logements, 3);
   assert.equal(normaliserDevisData({ logements: 999 }).logements, 50);
+  assert.equal(normaliserDevisData({}).nomLogements, 'Maison');
+});
+
+test('texte de fin : après le bloc Divers, hors bloc, sans quantité, pas dans les totaux', () => {
+  const p = { ...params, textesFin: ['Garanties :', '  ', 'Une remise pourra être effectuée.'] };
+  const r = calculer(villaDemo(), p);
+  const fin = r.lignes.slice(-2);
+  assert.deepEqual(fin, [
+    { bloc: '', ref: null, designation: 'Garanties :', quantite: null },
+    { bloc: '', ref: null, designation: 'Une remise pourra être effectuée.', quantite: null },
+  ]);
+  assert.equal(r.lignes[r.lignes.length - 3].bloc, 'Divers');
+  assert.ok(!totauxParBloc(r.lignes).blocs.some((b) => !b.bloc));
+  assert.ok(parametresParDefaut().textesFin.some((t) => t.includes('gamme Céliane')));
+  // plusieurs logements : toujours une seule fois, tout à la fin
+  const r2 = calculer({ ...villaDemo(), logements: 2 }, p);
+  assert.deepEqual(r2.lignes.slice(-2), fin);
+  assert.match(r2.lignes[r2.lignes.length - 3].bloc, /^2\.\d+$/);
 });

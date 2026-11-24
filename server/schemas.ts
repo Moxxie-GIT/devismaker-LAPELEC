@@ -36,6 +36,7 @@ export const SchemaDevisData = z.object({
   })).max(200),
   notes: texte(5000),
   logements: z.number().int().min(1).max(50).default(1),
+  nomLogements: texte(60).default('Maison'),
 });
 
 export const SchemaEntete = z.object({
@@ -54,6 +55,7 @@ export const SchemaParametres = z.object({
   coefMo: z.number().finite().min(0).max(100),
   domotique: z.record(z.string(), prix),
   diversModeles: z.array(texte(400)).max(50),
+  textesFin: z.array(texte(2000)).max(50).default([]),
 });
 
 export function valider<S extends z.ZodTypeAny>(schema: S, v: unknown): z.output<S> {

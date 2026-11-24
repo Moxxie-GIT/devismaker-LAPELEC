@@ -155,8 +155,8 @@ export function Editeur({ id }: { id: string }) {
         <span className="fil">
           <b title={devis.titre}>{devis.titre}</b>{devis.client && <span className="client">{devis.client}</span>}
           {data.logements > 1 && (
-            <button className="logements" onClick={() => setSelection('projet')} title="Toutes les quantités de l’import sont multipliées. Réglage dans Projet.">
-              × {data.logements} logements
+            <button className="logements" onClick={() => setSelection('projet')} title="Un bloc par logement dans l’import. Réglage dans Projet.">
+              {data.logements} logements
             </button>
           )}
         </span>
@@ -240,8 +240,9 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
   const pieces = devis.data.pieces;
   const points = pieces.reduce((a, p) => a + p.circuits.reduce((b, c) => b + c.nb, 0), 0);
   const nbErreurs = resultat.alertes.filter((a) => a.niveau === 'erreur').length;
-  const blocs = new Set(resultat.lignes.map((l) => l.bloc)).size;
+  const blocs = new Set(resultat.lignes.filter((l) => l.bloc).map((l) => l.bloc)).size;
   const n = devis.data.logements;
+  const nomLog = devis.data.nomLogements.trim() || 'Maison';
   const changerLogements = (v: number) => { if (v !== n) modifier((d) => { d.data.logements = v; }); };
   return (
     <>
@@ -268,14 +269,22 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
       </section>
       <section className="section">
         <header><h2>Logements identiques</h2><p>Plusieurs maisons ou appartements identiques, même en miroir : saisis un seul logement.</p></header>
-        <div className="champ" style={{ flex: '0 0 auto' }}>
-          <span className="lbl">Nombre de logements</span>
-          <Compteur label="Nombre de logements identiques" valeur={n} min={1} max={LOGEMENTS_MAX} onChange={(v) => changerLogements(Math.round(v))} />
+        <div className="formulaire-ligne">
+          <div className="champ" style={{ flex: '0 0 auto' }}>
+            <span className="lbl">Nombre de logements</span>
+            <Compteur label="Nombre de logements identiques" valeur={n} min={1} max={LOGEMENTS_MAX} onChange={(v) => changerLogements(Math.round(v))} />
+          </div>
+          {n > 1 && (
+            <div className="champ" style={{ flex: '0 1 220px' }}>
+              <label htmlFor="p-nom-log">Nom des logements</label>
+              <input id="p-nom-log" value={devis.data.nomLogements} placeholder="Maison" onChange={(e) => modifier((d) => { d.data.nomLogements = e.target.value; })} />
+            </div>
+          )}
         </div>
         <p className="petit discret" style={{ marginTop: 8 }}>
           {n > 1
-            ? `Le fichier d’import contient ${n} fois ce logement : toutes les quantités sont multipliées par ${n} (pièces, tableaux, domotique et divers). Les tableaux affichés et les quantités à changer dans les ensembles restent celles d’un logement, puisque chaque ensemble est déjà compté ${n} fois.`
-            : 'Mets 2 pour deux maisons identiques : le devis exporté sera exactement le double.'}
+            ? `L’import contient un bloc par logement (1 « ${nomLog} 1 », 2 « ${nomLog} 2 »…), et dans chacun toutes les pièces, la domotique et les divers en sous-blocs (1.1, 1.2…). Ils restent séparés dans Esabora : un changement dans un logement ne touche pas les autres.`
+            : 'Mets 2 pour deux maisons identiques : l’import aura un bloc par maison, avec chacun toutes les pièces.'}
         </p>
       </section>
       <section className="section">

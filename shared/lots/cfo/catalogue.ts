@@ -386,6 +386,17 @@ export const DOMOTIQUE_DEFAUT: Record<string, { designation: string; pu: number;
 };
 export const ORDRE_DOMOTIQUE = ['TA2', 'TA4', 'RM4', 'RM8', 'RM16', 'SM4', 'DM4T', 'DALI', 'JM4T', 'HORL', 'USB', 'IP', 'ALIM'];
 
+/** Texte de fin de devis proposé par défaut (modifiable dans Utilisateurs et prix). */
+export const TEXTES_FIN = [
+  "Dans ce devis, l'appareillage électrique est compris, il est prévu en LeGrand gamme Céliane. La pose des luminaires est comprise. Un second devis sera effectué pour vos luminaires, en fonction de la gamme choisie.",
+  "La coordination entre les corps de métier est importante. Toute intervention doit être prévue au minimum 24 heures à l'avance. Pour les interventions lourdes type incorporation béton, le délai est de 48 heures. Nous ne garantissons aucune intervention de dernière minute. Aucune incorporation béton ne sera faite sans plan d'élévation.",
+  'Garanties :',
+  'Nous répercutons les garanties de nos fournisseurs pour le matériel installé.',
+  "Notre garantie disparaît immédiatement si le client modifie ou fait réparer sans notre accord le matériel fourni. La garantie ne s'applique pas aux détériorations, provenant de négligences ou de défaut d'entretien, échappant à notre contrôle.",
+  'Une remise pourra être effectuée si les 3 lots CFO,CFA,SOLAIRE sont choisis.',
+  'Restant à votre disposition pour tout renseignement complémentaire recevez, Madame, Monsieur, nos respectueuses salutations.',
+];
+
 export const DIVERS_MODELES = [
   'Consuel',
   'Réunion, études, modification recollement sur plan, suivi et approvisionnement chantier.',

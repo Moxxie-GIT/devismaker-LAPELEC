@@ -70,8 +70,13 @@ export interface DevisData {
   domotique: Domotique;
   divers: LigneLibre[];
   notes: string;
-  /** Logements identiques (maisons jumelles, même en miroir) : le devis saisi est celui d'un logement, l'import a toutes ses quantités × logements. */
+  /**
+   * Logements identiques (maisons jumelles, même en miroir) : le devis saisi est celui d'un logement. Avec 2 et plus,
+   * l'import a un bloc par logement (« 1 » Maison 1, « 2 » Maison 2…) et tous les blocs du logement en sous-blocs (1.1, 1.2…).
+   */
   logements: number;
+  /** Nom des logements dans les titres de blocs : « Maison » donne « Maison 1 », « Maison 2 »… */
+  nomLogements: string;
 }
 
 export interface Devis {
@@ -114,6 +119,8 @@ export interface Parametres {
   coefMo: number;
   domotique: Record<string, PrixLigne>;
   diversModeles: string[];
+  /** Texte de fin de devis : une ligne par paragraphe, exportée après le bloc Divers, hors bloc. */
+  textesFin: string[];
 }
 
 export interface Utilisateur {
@@ -130,7 +137,9 @@ export interface LigneImport {
   bloc: string;
   ref: string | null;
   designation: string;
-  quantite: number;
+  quantite: number | null;   // null : ligne de texte
+  /** Ligne de titre d'un bloc (plusieurs logements) : sa désignation est le nom du bloc. */
+  titre?: boolean;
   pu?: number | null;
   coefMat?: number | null;
   coefMo?: number | null;
@@ -198,4 +207,6 @@ export interface Resultat {
   aModifier: { bloc: string; tableau: string; ensemble: string; changements: Protection[] }[];
   domotique: { modules: Record<string, number>; participants: number; parInter: { piece: string; inter: number; boutons: number; modules: string }[] } | null;
   alertes: Alerte[];
+  /** Plusieurs logements : numéros de sous-bloc de chaque bloc du logement (« Cuisine » : ['1.2', '2.2']). */
+  numeros?: Record<string, string[]>;
 }

@@ -106,11 +106,13 @@ function Prix() {
   const [p, setP] = useState<P>(structuredClone(params));
   const [erreur, setErreur] = useState('');
   const [modeles, setModeles] = useState(params.diversModeles.join('\n'));
+  const [fin, setFin] = useState(params.textesFin.join('\n'));
+  const lignes = (t: string) => t.split('\n').map((s) => s.trim()).filter(Boolean);
   const majD = (k: string, champ: string, v: any) => setP((x) => { const n = structuredClone(x); (n.domotique[k] as any)[champ] = v; return n; });
   const enregistrer = async () => {
     setErreur('');
     try {
-      const n = await put<P>('/api/parametres', { ...p, diversModeles: modeles.split('\n').map((s) => s.trim()).filter(Boolean) });
+      const n = await put<P>('/api/parametres', { ...p, diversModeles: lignes(modeles), textesFin: lignes(fin) });
       setParams(n); setP(structuredClone(n)); toast('Prix enregistrés');
     } catch (e: any) { setErreur(e.message); }
   };
@@ -118,12 +120,12 @@ function Prix() {
     setErreur('');
     try {
       const n = fusionnerParametres(JSON.parse(await f.text()));
-      setP(n); setModeles(n.diversModeles.join('\n'));
+      setP(n); setModeles(n.diversModeles.join('\n')); setFin(n.textesFin.join('\n'));
       toast('Fichier chargé : vérifie les valeurs puis enregistre');
     } catch { setErreur('Fichier illisible : il faut un fichier de prix (.json) exporté depuis cet écran.'); }
   };
   const exporter = () => {
-    const contenu = { ...p, diversModeles: modeles.split('\n').map((s) => s.trim()).filter(Boolean) };
+    const contenu = { ...p, diversModeles: lignes(modeles), textesFin: lignes(fin) };
     const url = URL.createObjectURL(new Blob([JSON.stringify(contenu, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = 'prix-devis.json';
     document.body.appendChild(a); a.click(); a.remove();
@@ -174,6 +176,10 @@ function Prix() {
       <div className="bloc">
         <header><h2>Lignes Divers proposées</h2><p className="petit discret">Une par ligne. Elles sont ajoutées à chaque nouveau devis, prix et heures à renseigner.</p></header>
         <div className="corps"><textarea style={{ width: '100%', minHeight: 150 }} value={modeles} onChange={(e) => setModeles(e.target.value)} /></div>
+      </div>
+      <div className="bloc">
+        <header><h2>Texte de fin de devis</h2><p className="petit discret">Un paragraphe par ligne. Ajouté à la fin de chaque import, après le bloc Divers, hors bloc.</p></header>
+        <div className="corps"><textarea aria-label="Texte de fin de devis" style={{ width: '100%', minHeight: 200 }} value={fin} onChange={(e) => setFin(e.target.value)} /></div>
       </div>
       <div className="barre-enregistrer"><span className="petit discret">Les prix s’appliquent à tous les devis dès l’enregistrement.</span><button className="btn primaire" onClick={enregistrer}><Icone nom="coche" />Enregistrer les prix</button></div>
     </>

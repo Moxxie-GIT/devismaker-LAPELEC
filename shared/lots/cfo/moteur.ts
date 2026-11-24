@@ -616,10 +616,35 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   if (!pieces.length) err('Ajoute au moins une pièce.');
   for (const p of pieces) if (!TYPES_PIECES[p.type]) att(`${p.nom} : type de pièce inconnu.`, p.id);
 
-  // logements identiques : tout le fichier d'import × n. Les tableaux, les modules et les quantités
   // à changer dans les ensembles restent ceux d'un logement (chaque ensemble est compté n fois).
+  // logements identiques : un bloc par logement (« 1 », titre « Maison 1 »), et dedans tous les blocs du logement en
+  // sous-blocs numérotés (1.1, 1.2…), chacun ouvert par sa ligne de titre. Les logements restent séparés dans Esabora.
   const n = data.logements > 1 ? Math.round(data.logements) : 1;
-  if (n > 1) for (const l of lignes) l.quantite = Math.round(l.quantite * n * 1000) / 1000;
+  let numeros: Record<string, string[]> | undefined;
+  if (n > 1) {
+    const ordre: string[] = [];
+    const parBloc = new Map<string, LigneImport[]>();
+    for (const l of lignes) {
+      if (!parBloc.has(l.bloc)) { parBloc.set(l.bloc, []); ordre.push(l.bloc); }
+      parBloc.get(l.bloc)!.push(l);
+    }
+    const nom = data.nomLogements?.trim() || 'Maison';
+    const sortie: LigneImport[] = [];
+    numeros = {};
+    for (let k = 1; k <= n; k++) {
+      sortie.push({ bloc: `${k}`, ref: null, designation: `${nom} ${k}`, quantite: null, titre: true });
+      ordre.forEach((b, j) => {
+        const num = `${k}.${j + 1}`;
+        (numeros![b] ??= []).push(num);
+        sortie.push({ bloc: num, ref: null, designation: b, quantite: null, titre: true });
+        for (const l of parBloc.get(b)!) sortie.push({ ...l, bloc: num });
+      });
+    }
+    lignes.splice(0, lignes.length, ...sortie);
+  }
 
-  return { lignes, tableaux: resTableaux, aModifier, domotique, alertes };
+  // texte de fin : après le bloc Divers, hors bloc, sans quantité ni prix
+  for (const t of params.textesFin ?? []) if (t.trim()) lignes.push({ bloc: '', ref: null, designation: t.trim(), quantite: null });
+
+  return { lignes, tableaux: resTableaux, aModifier, domotique, alertes, numeros };
 }
