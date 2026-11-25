@@ -8,7 +8,7 @@ import {
 } from './catalogue';
 import { TYPES_PIECES } from './pieces';
 import { disposer } from './disposition';
-import { SEPARATEUR_BLOC, nomBloc, nomLogement } from '../../blocs';
+import { SEPARATEUR_BLOC, nomLogement } from '../../blocs';
 
 const MODULES_CANAL: Record<string, string> = { v110: 'SM4', v230: 'DM4T', dali: 'DALI', jm: 'JM4T' };
 const RESERVES = ['domotique', 'divers'];
@@ -202,11 +202,11 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   // ---------- contrôles de cohérence
   const vus = new Map<string, string>();
   for (const p of pieces) {
-    const n = nomBloc(p.nom);
+    const n = p.nom.trim();
     if (!n) { err('Une pièce n’a pas de nom.', p.id); continue; }
     if (RESERVES.includes(n.toLowerCase())) err(`« ${n} » est réservé au bloc ${n} : choisis un autre nom de pièce.`, p.id);
     const k = n.toLowerCase();
-    if (vus.has(k)) err(`Deux pièces s’appellent « ${n} » : leurs blocs fusionneraient dans Esabora.`, p.id);
+    if (vus.has(k)) err(`Deux pièces s’appellent « ${n} » : leurs lignes se mélangeraient dans le même bloc.`, p.id);
     vus.set(k, p.id);
     if (!p.tableau.choix) err(`${n} : indique s’il y a un TD dans la pièce.`, p.id);
   }
@@ -217,7 +217,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   // ---------- tableaux
   const tableaux = new Map<string, TableauInterne>();
   const creerTableau = (id: string, nom: string, p: Piece, modeleCle: string): TableauInterne => ({
-    id, nom, bloc: nomBloc(p.nom), pieceId: p.id, modele: TABLEAUX[modeleCle], modeleCle, section: p.tableau.section, phase: p.tableau.phase,
+    id, nom, bloc: p.nom.trim(), pieceId: p.id, modele: TABLEAUX[modeleCle], modeleCle, section: p.tableau.section, phase: p.tableau.phase,
     points: 0, socles: 0, vr: 0, nA: 0, ded: {}, rattachees: [], detail: [], canaux: {}, tl: [],
     fn: { lum: [], soc: [], vr: [], ded: {}, tri: [] },
   });
@@ -250,7 +250,7 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   let detecteurs = 0;
 
   for (const p of pieces) {
-    const b = nomBloc(p.nom);
+    const b = p.nom.trim();
     const t = tableauDe(p);
     if (t && t.pieceId !== p.id) t.rattachees.push(b);
     const L = (ref: string | null, designation: string, quantite: number, extra: Partial<LigneImport> = {}) =>
@@ -617,26 +617,33 @@ export function calculer(data: DevisData, params: Parametres): Resultat {
   if (!pieces.length) err('Ajoute au moins une pièce.');
   for (const p of pieces) if (!TYPES_PIECES[p.type]) att(`${p.nom} : type de pièce inconnu.`, p.id);
 
-  // logements identiques : tous les blocs du logement (pièces, Domotique, Divers) passent en sous-blocs d'un bloc par
-  // logement. Le N° « Maison 1.Chambre 1 » crée dans Esabora le bloc Maison 1 et, dedans, le bloc Chambre 1 : les
-  // logements restent séparés. Tableaux et changements d'ensemble restent ceux d'un logement, à faire dans chacun.
-  const n = data.logements > 1 ? Math.round(data.logements) : 1;
-  if (n > 1) {
-    const parBloc = new Map<string, LigneImport[]>();
-    for (const l of lignes) {
-      if (!parBloc.has(l.bloc)) parBloc.set(l.bloc, []);
-      parBloc.get(l.bloc)!.push(l);
-    }
-    const sortie: LigneImport[] = [];
-    for (let k = 1; k <= n; k++) {
-      const logement = nomLogement(data.nomLogements ?? '', k);
-      for (const [b, ls] of parBloc) for (const l of ls) sortie.push({ ...l, bloc: `${logement}${SEPARATEUR_BLOC}${b}` });
-    }
-    lignes.splice(0, lignes.length, ...sortie);
+  // numéros de blocs pour l'import (voir shared/blocs.ts) : chaque bloc (pièce, Domotique, Divers) prend un numéro et
+  // s'ouvre par sa ligne de titre. Logements identiques : un bloc par logement (1 « Maison 1 », 2 « Maison 2 »…) et
+  // dedans tous les blocs du logement en sous-blocs (1.1, 1.2…), séparés dans Esabora. Tableaux et changements
+  // d'ensemble restent ceux d'un logement, à faire dans chacun.
+  const parBloc = new Map<string, LigneImport[]>();
+  for (const l of lignes) {
+    if (!parBloc.has(l.bloc)) parBloc.set(l.bloc, []);
+    parBloc.get(l.bloc)!.push(l);
   }
+  const n = data.logements > 1 ? Math.round(data.logements) : 1;
+  const numeros: Record<string, string[]> = {};
+  const sortie: LigneImport[] = [];
+  const titre = (bloc: string, designation: string) => sortie.push({ bloc, ref: null, designation, quantite: null, titre: true });
+  for (let k = 1; k <= n; k++) {
+    if (n > 1) titre(`${k}`, nomLogement(data.nomLogements ?? '', k));
+    let j = 0;
+    for (const [b, ls] of parBloc) {
+      const num = n > 1 ? `${k}${SEPARATEUR_BLOC}${++j}` : `${++j}`;
+      (numeros[b] ??= []).push(num);
+      titre(num, b);
+      for (const l of ls) sortie.push({ ...l, bloc: num });
+    }
+  }
+  lignes.splice(0, lignes.length, ...sortie);
 
   // texte de fin : après le bloc Divers, hors bloc, sans quantité ni prix
   for (const t of params.textesFin ?? []) if (t.trim()) lignes.push({ bloc: '', ref: null, designation: t.trim(), quantite: null });
 
-  return { lignes, tableaux: resTableaux, aModifier, domotique, alertes };
+  return { lignes, tableaux: resTableaux, aModifier, domotique, alertes, numeros };
 }

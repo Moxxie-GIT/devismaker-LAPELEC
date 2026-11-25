@@ -2,7 +2,6 @@
 // Seules les lignes chiffrées par l'outil (Domotique, Divers) ont un montant : les blocs des pièces sont faits
 // d'ensembles Esabora, dont les prix ne sont connus que d'Esabora.
 import type { LigneImport } from './types';
-import { libelleBloc } from './blocs';
 
 export interface TotalBloc {
   bloc: string;
@@ -18,7 +17,9 @@ const arrondi = (n: number) => Math.round(n * 100) / 100;
 
 export function totauxParBloc(lignes: LigneImport[]): { blocs: TotalBloc[]; general: TotalBloc } {
   const parBloc = new Map<string, TotalBloc>();
+  const noms = new Map<string, string>();
   for (const l of lignes) {
+    if (l.titre) { noms.set(l.bloc, l.designation); continue; }   // ligne de titre du bloc
     if (!l.bloc) continue;   // texte de fin, hors bloc
     let t = parBloc.get(l.bloc);
     if (!t) { t = { bloc: l.bloc, lignes: 0, articles: 0, heures: 0, materiel: null, mainOeuvre: null, total: null }; parBloc.set(l.bloc, t); }
@@ -29,7 +30,7 @@ export function totauxParBloc(lignes: LigneImport[]): { blocs: TotalBloc[]; gene
     if (l.moUnit != null && l.tauxMo != null) t.mainOeuvre = arrondi((t.mainOeuvre ?? 0) + q * arrondi(l.moUnit * l.tauxMo * (l.coefMo ?? 1)));
   }
   const blocs = [...parBloc.values()].map((t) => ({
-    ...t, bloc: libelleBloc(t.bloc), heures: arrondi(t.heures),
+    ...t, bloc: noms.has(t.bloc) ? `${t.bloc} ${noms.get(t.bloc)}` : t.bloc, heures: arrondi(t.heures),
     total: t.materiel == null && t.mainOeuvre == null ? null : arrondi((t.materiel ?? 0) + (t.mainOeuvre ?? 0)),
   }));
   const somme = (f: (t: TotalBloc) => number | null) => arrondi(blocs.reduce((a, t) => a + (f(t) ?? 0), 0));

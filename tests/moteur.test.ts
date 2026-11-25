@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { calculer, modulesOnOff, modulesPourInter, nomCourt } from '../shared/lots/cfo/moteur';
+import { calculer as calculerImport, modulesOnOff, modulesPourInter, nomCourt } from '../shared/lots/cfo/moteur';
+import type { DevisData, Parametres } from '../shared/types';
 import { parametresParDefaut } from '../shared/lots';
 import { nouvelElement, nouvellePiece } from '../shared/lots/cfo/pieces';
 import { CATALOGUE } from '../shared/lots/cfo/catalogue';
@@ -11,6 +12,16 @@ import { villaDemo } from './fixtures';
 import { paramsTest } from './params-test';
 
 const params = paramsTest();
+
+/**
+ * Résultat du moteur avec, pour chaque ligne, le nom de son bloc (« Chambre 1 ») au lieu de son numéro d'import, et
+ * sans les lignes de titre : le contenu des blocs, tel qu'il a été validé dans Esabora. La numérotation est testée à part.
+ */
+function calculer(d: DevisData, p: Parametres) {
+  const r = calculerImport(d, p);
+  const noms = new Map(r.lignes.filter((l) => l.titre).map((l) => [l.bloc, l.designation]));
+  return { ...r, lignes: r.lignes.filter((l) => !l.titre).map((l) => ({ ...l, bloc: noms.get(l.bloc) ?? l.bloc })) };
+}
 
 test('TA : jamais de TA6/TA8', () => {
   const s = (n: number) => { const m = modulesPourInter(n); return `${m.TA4}/${m.TA2}`; };
@@ -367,38 +378,46 @@ test('devis enregistré par une ancienne version : complété à la lecture', as
   assert.ok(r.lignes.some((l) => l.ref === 'ENSETD1'));
 });
 
-test('logements identiques : N° « Villa 1.Chambre 1 », sous-bloc de chaque pièce dans le bloc du logement', () => {
+test('numéros de blocs : 1, 2… et une ligne de titre au début de chaque bloc', () => {
+  const r = calculerImport(villaDemo(), params);
   const un = calculer(villaDemo(), params);
-  const deux = calculer({ ...villaDemo(), logements: 2, nomLogements: 'Villa' }, params);
   const blocs = [...new Set(un.lignes.map((l) => l.bloc))];
-  // pour chaque logement, chaque bloc avec exactement les mêmes lignes, préfixé du logement (séparateur « . »)
+  // chaque bloc : sa ligne de titre (N°, désignation = nom, sans référence ni quantité), puis ses lignes
+  const attendu: typeof r.lignes = [];
+  blocs.forEach((b, j) => {
+    attendu.push({ bloc: `${j + 1}`, ref: null, designation: b, quantite: null, titre: true });
+    for (const l of un.lignes.filter((x) => x.bloc === b)) attendu.push({ ...l, bloc: `${j + 1}` });
+  });
+  assert.deepEqual(r.lignes, attendu);
+  assert.deepEqual(r.numeros['Chambre 1'], ['1']);
+  // totaux : « 1 Chambre 1 »
+  assert.equal(totauxParBloc(r.lignes).blocs[0].bloc, '1 Chambre 1');
+});
+
+test('logements identiques : bloc 1 « Villa 1 », ses pièces en sous-blocs 1.1, 1.2…, puis bloc 2', () => {
+  const un = calculerImport(villaDemo(), params);
+  const deux = calculerImport({ ...villaDemo(), logements: 2, nomLogements: 'Villa' }, params);
+  const noms = un.lignes.filter((l) => l.titre).map((l) => l.designation);
+  // pour chaque logement : titre « Villa k », puis chaque bloc avec son titre et exactement les mêmes lignes
   const attendu: typeof un.lignes = [];
-  for (const k of [1, 2]) for (const b of blocs) {
-    for (const l of un.lignes.filter((x) => x.bloc === b)) attendu.push({ ...l, bloc: `Villa ${k}.${b}` });
+  for (const k of [1, 2]) {
+    attendu.push({ bloc: `${k}`, ref: null, designation: `Villa ${k}`, quantite: null, titre: true });
+    noms.forEach((nom, j) => {
+      for (const l of un.lignes.filter((x) => x.bloc === `${j + 1}`)) attendu.push({ ...l, bloc: `${k}.${j + 1}` });
+    });
   }
   assert.deepEqual(deux.lignes, attendu);
-  assert.ok(blocs.includes('Domotique') && blocs.includes('Divers'));
-  assert.equal(deux.lignes[0].bloc, 'Villa 1.Chambre 1');
+  assert.ok(noms.includes('Domotique') && noms.includes('Divers'));
+  assert.deepEqual(deux.numeros['Chambre 1'], ['1.1', '2.1']);
   // un logement : mêmes tableaux et mêmes changements d'ensemble (à faire dans chaque logement)
   assert.deepEqual(deux.tableaux, un.tableaux);
   assert.deepEqual(deux.aModifier, un.aModifier);
-  // totaux : chaque bloc de chaque logement, total général = 2 × un logement
+  // totaux : chaque sous-bloc nommé, total général = 2 × un logement
   const t1 = totauxParBloc(un.lignes), t2 = totauxParBloc(deux.lignes);
-  assert.equal(t2.blocs[0].bloc, 'Villa 1 › Chambre 1');
+  assert.equal(t2.blocs[0].bloc, '1.1 Chambre 1');
   assert.equal(t2.blocs.length, t1.blocs.length * 2);
   assert.ok(Math.abs(t2.general.heures - t1.general.heures * 2) < 0.05);
   if (t1.general.total != null) assert.ok(Math.abs(t2.general.total! - t1.general.total * 2) < 0.05);
-});
-
-test('noms de blocs : pas de point (séparateur des sous-blocs dans Esabora)', () => {
-  const d = villaDemo();
-  d.pieces[0].nom = ' Ch.  parents ';
-  const r = calculer({ ...d, logements: 2, nomLogements: 'Lot A.' }, params);
-  assert.ok(r.lignes.some((l) => l.bloc === 'Lot A 1.Ch parents'));
-  assert.ok(r.lignes.every((l) => !l.bloc || l.bloc.split('.').length === 2));
-  // un nom fait seulement de points reste une pièce sans nom
-  d.pieces[0].nom = '..';
-  assert.ok(calculer(d, params).alertes.some((a) => a.niveau === 'erreur' && a.message.includes('pas de nom')));
 });
 
 test('logements : valeur absente ou invalide ramenée à 1', async () => {
@@ -422,7 +441,8 @@ test('texte de fin : après le bloc Divers, hors bloc, sans quantité, pas dans 
   assert.ok(!totauxParBloc(r.lignes).blocs.some((b) => !b.bloc));
   assert.ok(parametresParDefaut().textesFin.some((t) => t.includes('gamme Céliane')));
   // plusieurs logements : toujours une seule fois, tout à la fin
-  const r2 = calculer({ ...villaDemo(), logements: 2 }, p);
+  const r2 = calculerImport({ ...villaDemo(), logements: 2 }, p);
   assert.deepEqual(r2.lignes.slice(-2), fin);
-  assert.equal(r2.lignes[r2.lignes.length - 3].bloc, 'Maison 2.Divers');
+  assert.equal(r2.lignes[r2.lignes.length - 3].bloc, r2.numeros.Divers[1]);
+  assert.match(r2.numeros.Divers[1], /^2\.\d+$/);
 });

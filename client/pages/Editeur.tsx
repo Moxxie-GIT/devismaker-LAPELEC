@@ -284,7 +284,7 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
         </div>
         <p className="petit discret" style={{ marginTop: 8 }}>
           {n > 1
-            ? `L’import contient un bloc par logement (${listeLogements(nomLog, n)}), et dans chacun toutes les pièces, la domotique et les divers en sous-blocs. Ils restent séparés dans Esabora : un changement dans un logement ne touche pas les autres.`
+            ? `L’import contient un bloc par logement (${listeLogements(nomLog, n)}), et dans chacun toutes les pièces, la domotique et les divers en sous-blocs (1.1, 1.2…). Ils restent séparés dans Esabora : un changement dans un logement ne touche pas les autres.`
             : 'Mets 2 pour deux maisons identiques : l’import aura un bloc par maison, avec chacun toutes les pièces.'}
         </p>
       </section>

@@ -4,7 +4,7 @@ import { telecharger } from '../../lib/api';
 import { toast } from '../../lib/ui';
 import { Icone } from '../../lib/icones';
 import { totauxParBloc } from '../../../shared/totaux';
-import { SEPARATEUR_BLOC, listeLogements, nomLogement } from '../../../shared/blocs';
+import { SEPARATEUR_BLOC, listeLogements } from '../../../shared/blocs';
 
 const euros = (n: number | null) => (n == null ? null : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }));
 
@@ -65,7 +65,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
       <div className="titre-piece"><h1>Vérifier et exporter</h1></div>
       {plusieurs && (
         <div className="message info bandeau">
-          <b>{devis.data.logements} logements identiques</b> : un bloc par logement ({logements}), avec dans chacun toutes les pièces en sous-blocs.
+          <b>{devis.data.logements} logements identiques</b> : un bloc par logement ({logements}), avec dans chacun toutes les pièces en sous-blocs (1.1, 1.2…).
           Les ensembles tableaux sont à changer dans chaque logement.
         </div>
       )}
@@ -100,8 +100,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
           <li>
             <p>Dans Esabora, importe <b>uniquement la feuille IMPORT</b> avec ces réglages :</p>
             <ul className="petit" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-              <li>N° Bloc : colonne « N° », séparateur « {SEPARATEUR_BLOC} », « Reporter le N° dans la désignation » décochée, « Ajouter ligne titre bloc » cochée ;</li>
-              {plusieurs && <li className="discret">le N° « {nomLogement(devis.data.nomLogements, 1)}{SEPARATEUR_BLOC}Chambre 1 » crée le bloc {nomLogement(devis.data.nomLogements, 1)} et, dedans, le bloc Chambre 1 ;</li>}
+              <li>N° Bloc : colonne « N° », séparateur « {SEPARATEUR_BLOC} », « Reporter le N° dans la désignation » décochée, « Ajouter ligne titre bloc » <b>décochée</b> (chaque bloc a déjà sa ligne de titre dans le fichier) ;</li>
               <li>Référence : colonne « Référence », case « Rechercher référence » cochée ;</li>
               <li>« Associer lignes avec désignations identiques » décochée ;</li>
               <li>les autres colonnes sur la colonne du même nom.</li>
@@ -114,7 +113,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
                 <tbody>
                   {resultat.aModifier.map((m) => m.changements.map((c, i) => (
                     <tr key={m.tableau + c.cle}>
-                      <td>{i === 0 && <><b>{m.bloc}, {m.ensemble}</b>{plusieurs && <div className="petit discret">dans {logements}</div>}</>}</td>
+                      <td>{i === 0 && <><b>{m.bloc}, {m.ensemble}</b><div className="petit discret">bloc{(resultat.numeros[m.bloc]?.length ?? 0) > 1 ? 's' : ''} {resultat.numeros[m.bloc]?.join(', ')}</div></>}</td>
                       <td>{c.label}<div className="petit discret">{c.ref}</div></td>
                       <td className="num" style={{ whiteSpace: 'nowrap' }}>{c.base === 0 ? 'à ajouter' : c.base} → <b>{c.final}</b></td>
                     </tr>
@@ -138,7 +137,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
               <tbody>
                 {resultat.lignes.map((l, i) => (
                   <tr key={i} className={i > 0 && resultat.lignes[i - 1].bloc !== l.bloc ? 'debut-bloc' : ''}>
-                    <td>{l.bloc}</td><td>{l.ref ?? ''}</td><td className="des">{l.designation}</td>
+                    <td>{l.bloc}</td><td>{l.ref ?? ''}</td><td className="des">{l.titre ? <b>{l.designation}</b> : l.designation}</td>
                     <td className="num">{l.quantite ?? ''}</td><td className="num">{l.moUnit ?? ''}</td><td className="num">{l.pu ?? ''}</td>
                   </tr>
                 ))}
