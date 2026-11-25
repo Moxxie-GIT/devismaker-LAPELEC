@@ -4,6 +4,7 @@ import { telecharger } from '../../lib/api';
 import { toast } from '../../lib/ui';
 import { Icone } from '../../lib/icones';
 import { totauxParBloc } from '../../../shared/totaux';
+import { SEPARATEUR_BLOC, listeLogements, nomLogement } from '../../../shared/blocs';
 
 const euros = (n: number | null) => (n == null ? null : n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }));
 
@@ -46,6 +47,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
   const attentions = resultat.alertes.filter((a) => a.niveau === 'attention');
   const blocs = [...new Set(resultat.lignes.filter((l) => l.bloc).map((l) => l.bloc))];
   const plusieurs = devis.data.logements > 1;
+  const logements = plusieurs ? listeLogements(devis.data.nomLogements, devis.data.logements) : '';
 
   const exporter = async () => {
     setEnvoi(true); setErreur('');
@@ -61,9 +63,9 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
   return (
     <>
       <div className="titre-piece"><h1>Vérifier et exporter</h1></div>
-      {devis.data.logements > 1 && (
+      {plusieurs && (
         <div className="message info bandeau">
-          <b>{devis.data.logements} logements identiques</b> : un bloc par logement (1, 2…), avec dans chacun toutes les pièces en sous-blocs (1.1, 1.2…).
+          <b>{devis.data.logements} logements identiques</b> : un bloc par logement ({logements}), avec dans chacun toutes les pièces en sous-blocs.
           Les ensembles tableaux sont à changer dans chaque logement.
         </div>
       )}
@@ -98,9 +100,8 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
           <li>
             <p>Dans Esabora, importe <b>uniquement la feuille IMPORT</b> avec ces réglages :</p>
             <ul className="petit" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-              {plusieurs
-                ? <li>N° de bloc : colonne « N° », case « Ajouter ligne titre bloc » <b>décochée</b> (le fichier a déjà ses titres : « {devis.data.nomLogements.trim() || 'Maison'} 1 », puis le nom de chaque pièce) ;</li>
-                : <li>N° de bloc : colonne « N° », case « Ajouter ligne titre bloc » cochée ;</li>}
+              <li>N° Bloc : colonne « N° », séparateur « {SEPARATEUR_BLOC} », « Reporter le N° dans la désignation » décochée, « Ajouter ligne titre bloc » cochée ;</li>
+              {plusieurs && <li className="discret">le N° « {nomLogement(devis.data.nomLogements, 1)}{SEPARATEUR_BLOC}Chambre 1 » crée le bloc {nomLogement(devis.data.nomLogements, 1)} et, dedans, le bloc Chambre 1 ;</li>}
               <li>Référence : colonne « Référence », case « Rechercher référence » cochée ;</li>
               <li>« Associer lignes avec désignations identiques » décochée ;</li>
               <li>les autres colonnes sur la colonne du même nom.</li>
@@ -113,7 +114,7 @@ export function PanneauExport({ devis, resultat, onAller, avantExport, etatSauve
                 <tbody>
                   {resultat.aModifier.map((m) => m.changements.map((c, i) => (
                     <tr key={m.tableau + c.cle}>
-                      <td>{i === 0 && <><b>{m.bloc}, {m.ensemble}</b>{resultat.numeros?.[m.bloc] && <div className="petit discret">blocs {resultat.numeros[m.bloc].join(', ')}</div>}</>}</td>
+                      <td>{i === 0 && <><b>{m.bloc}, {m.ensemble}</b>{plusieurs && <div className="petit discret">dans {logements}</div>}</>}</td>
                       <td>{c.label}<div className="petit discret">{c.ref}</div></td>
                       <td className="num" style={{ whiteSpace: 'nowrap' }}>{c.base === 0 ? 'à ajouter' : c.base} → <b>{c.final}</b></td>
                     </tr>

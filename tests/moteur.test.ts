@@ -367,31 +367,38 @@ test('devis enregistré par une ancienne version : complété à la lecture', as
   assert.ok(r.lignes.some((l) => l.ref === 'ENSETD1'));
 });
 
-test('logements identiques : un bloc par logement, ses pièces en sous-blocs 1.1, 1.2…', () => {
+test('logements identiques : N° « Villa 1.Chambre 1 », sous-bloc de chaque pièce dans le bloc du logement', () => {
   const un = calculer(villaDemo(), params);
   const deux = calculer({ ...villaDemo(), logements: 2, nomLogements: 'Villa' }, params);
   const blocs = [...new Set(un.lignes.map((l) => l.bloc))];
-  // pour chaque logement : titre « Villa k », puis chaque bloc avec son titre et exactement les mêmes lignes
+  // pour chaque logement, chaque bloc avec exactement les mêmes lignes, préfixé du logement (séparateur « . »)
   const attendu: typeof un.lignes = [];
-  for (const k of [1, 2]) {
-    attendu.push({ bloc: `${k}`, ref: null, designation: `Villa ${k}`, quantite: null, titre: true });
-    blocs.forEach((b, j) => {
-      attendu.push({ bloc: `${k}.${j + 1}`, ref: null, designation: b, quantite: null, titre: true });
-      for (const l of un.lignes.filter((x) => x.bloc === b)) attendu.push({ ...l, bloc: `${k}.${j + 1}` });
-    });
+  for (const k of [1, 2]) for (const b of blocs) {
+    for (const l of un.lignes.filter((x) => x.bloc === b)) attendu.push({ ...l, bloc: `Villa ${k}.${b}` });
   }
   assert.deepEqual(deux.lignes, attendu);
   assert.ok(blocs.includes('Domotique') && blocs.includes('Divers'));
-  assert.deepEqual(deux.numeros!['Chambre 1'], ['1.1', '2.1']);
+  assert.equal(deux.lignes[0].bloc, 'Villa 1.Chambre 1');
   // un logement : mêmes tableaux et mêmes changements d'ensemble (à faire dans chaque logement)
   assert.deepEqual(deux.tableaux, un.tableaux);
   assert.deepEqual(deux.aModifier, un.aModifier);
-  // totaux : chaque sous-bloc nommé, total général = 2 × un logement
+  // totaux : chaque bloc de chaque logement, total général = 2 × un logement
   const t1 = totauxParBloc(un.lignes), t2 = totauxParBloc(deux.lignes);
-  assert.equal(t2.blocs[0].bloc, '1.1 Chambre 1');
+  assert.equal(t2.blocs[0].bloc, 'Villa 1 › Chambre 1');
   assert.equal(t2.blocs.length, t1.blocs.length * 2);
   assert.ok(Math.abs(t2.general.heures - t1.general.heures * 2) < 0.05);
   if (t1.general.total != null) assert.ok(Math.abs(t2.general.total! - t1.general.total * 2) < 0.05);
+});
+
+test('noms de blocs : pas de point (séparateur des sous-blocs dans Esabora)', () => {
+  const d = villaDemo();
+  d.pieces[0].nom = ' Ch.  parents ';
+  const r = calculer({ ...d, logements: 2, nomLogements: 'Lot A.' }, params);
+  assert.ok(r.lignes.some((l) => l.bloc === 'Lot A 1.Ch parents'));
+  assert.ok(r.lignes.every((l) => !l.bloc || l.bloc.split('.').length === 2));
+  // un nom fait seulement de points reste une pièce sans nom
+  d.pieces[0].nom = '..';
+  assert.ok(calculer(d, params).alertes.some((a) => a.niveau === 'erreur' && a.message.includes('pas de nom')));
 });
 
 test('logements : valeur absente ou invalide ramenée à 1', async () => {
@@ -417,5 +424,5 @@ test('texte de fin : après le bloc Divers, hors bloc, sans quantité, pas dans 
   // plusieurs logements : toujours une seule fois, tout à la fin
   const r2 = calculer({ ...villaDemo(), logements: 2 }, p);
   assert.deepEqual(r2.lignes.slice(-2), fin);
-  assert.match(r2.lignes[r2.lignes.length - 3].bloc, /^2\.\d+$/);
+  assert.equal(r2.lignes[r2.lignes.length - 3].bloc, 'Maison 2.Divers');
 });

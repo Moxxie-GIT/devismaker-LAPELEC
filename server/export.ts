@@ -3,6 +3,7 @@ import type { Devis, Resultat } from '../shared/types';
 import { S, ecrireXlsx, type Cellule, type Feuille } from './xlsx';
 import { totauxParBloc } from '../shared/totaux';
 import { LIBELLE_ETAT, disposer } from '../shared/lots/cfo/disposition';
+import { listeLogements } from '../shared/blocs';
 
 const COLONNES = ['N°', 'Référence', 'Désignation', 'Quantité', 'Prix unitaire', 'Coef Mat.', 'Coef M.O.', 'M.O. Unit.', 'Taux M.O.', 'Unité'];
 
@@ -10,8 +11,9 @@ const c = (v: Cellule['v'], s: number = S.NORMAL): Cellule => ({ v, s });
 
 export function feuilles(devis: Devis, r: Resultat): Feuille[] {
   const n = devis.data.logements > 1 ? devis.data.logements : 1;
+  const logements = n > 1 ? listeLogements(devis.data.nomLogements, n) : '';
   const parLogement = n > 1
-    ? [c(`${n} logements identiques : un bloc par logement dans l’import (1, 2…), toutes les pièces en sous-blocs (1.1, 1.2…). Ci-dessous : un logement, à reporter dans chacun.`, S.SURLIGNE)]
+    ? [c(`${n} logements identiques : un bloc par logement dans l’import (${logements}), avec dedans un sous-bloc par pièce. Ci-dessous : un logement, à reporter dans chacun.`, S.SURLIGNE)]
     : null;
   // 1. IMPORT : la seule feuille à importer
   const imp: Cellule[][] = [COLONNES.map((h, i) => c(h, i < 2 ? S.ENTETE_TEXTE : S.ENTETE))];
@@ -30,8 +32,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
   if (parLogement) mod.push(parLogement);
   if (!r.aModifier.length) mod.push([], [c('Aucun changement : les ensembles minimum suffisent.')]);
   for (const m of r.aModifier) {
-    const nums = r.numeros?.[m.bloc];
-    mod.push([], [c(`Bloc « ${m.bloc} »${nums ? ` (blocs ${nums.join(', ')})` : ''}  >  ensemble ${m.ensemble}`, S.SOUS_TITRE)]);
+    mod.push([], [c(`Bloc « ${m.bloc} »${n > 1 ? ` (dans ${logements})` : ''}  >  ensemble ${m.ensemble}`, S.SOUS_TITRE)]);
     mod.push(['Article', 'Référence', 'Quantité actuelle', 'Quantité à mettre'].map((h) => c(h, S.TH)));
     for (const ch of m.changements) {
       mod.push([c(ch.label), c(ch.ref), c(ch.base ? ch.base : "0 (à ajouter dans l'ensemble)"), c(ch.final, S.SURLIGNE)]);
@@ -88,7 +89,7 @@ export function feuilles(devis: Devis, r: Resultat): Feuille[] {
     [c('Totaux par bloc (ne pas importer cette feuille)', S.TITRE)],
     [c('Domotique et Divers : chiffrés avec les prix de l’outil, ceux qui partent dans le fichier d’import.', S.ITALIQUE)],
     [c('Pièces : faites d’ensembles Esabora, dont les prix sont dans Esabora. Leur montant apparaît après l’import ; ici, le nombre de lignes, d’articles et les heures de pose ajoutées.', S.ITALIQUE)],
-    ...(n > 1 ? [[c(`${n} logements identiques : chaque sous-bloc de chaque logement, puis le total des ${n}.`, S.SURLIGNE)]] : []),
+    ...(n > 1 ? [[c(`${n} logements identiques : chaque bloc de chaque logement, puis le total des ${n}.`, S.SURLIGNE)]] : []),
     [],
     ['Bloc', 'Lignes', 'Articles', 'Heures de pose', 'Matériel (€ HT)', 'Main d’œuvre (€ HT)', 'Total (€ HT)'].map((h) => c(h, S.TH)),
   ];

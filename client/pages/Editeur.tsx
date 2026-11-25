@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Devis, Piece, Resultat } from '../../shared/types';
 import { Icone } from '../lib/icones';
 import { LOGEMENTS_MAX, LOTS } from '../../shared/lots';
+import { listeLogements } from '../../shared/blocs';
 import { ORDRE_TYPES, TYPES_PIECES, dupliquerPiece, nouvellePiece } from '../../shared/lots/cfo/pieces';
 import { ErreurApi, get, post, put } from '../lib/api';
 import { Barre, useApp } from '../lib/app';
@@ -283,7 +284,7 @@ function PanneauProjet({ devis, resultat, modifier, onSelection }: { devis: Devi
         </div>
         <p className="petit discret" style={{ marginTop: 8 }}>
           {n > 1
-            ? `L’import contient un bloc par logement (1 « ${nomLog} 1 », 2 « ${nomLog} 2 »…), et dans chacun toutes les pièces, la domotique et les divers en sous-blocs (1.1, 1.2…). Ils restent séparés dans Esabora : un changement dans un logement ne touche pas les autres.`
+            ? `L’import contient un bloc par logement (${listeLogements(nomLog, n)}), et dans chacun toutes les pièces, la domotique et les divers en sous-blocs. Ils restent séparés dans Esabora : un changement dans un logement ne touche pas les autres.`
             : 'Mets 2 pour deux maisons identiques : l’import aura un bloc par maison, avec chacun toutes les pièces.'}
         </p>
       </section>
